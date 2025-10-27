@@ -1,0 +1,28 @@
+flowchart LR
+    user["User"] --> react["React UI (Vite + TS)"]
+    react --> timeline["Konva Timeline"]
+    react --> player["HTML5 Video Player"]
+    react -->|IPC| tauri["Tauri (Rust)"]
+    tauri --- webview["WebView2"]
+    tauri --> resolver["Path Resolver"]
+    tauri --> allow["Allowlist"]
+    allow --> fs["Windows FS"]
+
+    subgraph "Import"
+        react -->|Import| tauri
+        tauri --> ffprobe["FFprobe"]
+        ffprobe -->|Metadata| react
+    end
+
+    subgraph "Preview"
+        player -->|local path| fs
+        timeline -->|in/out| state["Project State"]
+        state -->|playhead| timeline
+    end
+
+    subgraph "Export"
+        react -->|Export| tauri
+        tauri --> ffmpeg["FFmpeg"]
+        ffmpeg -->|Progress| react
+        ffmpeg -->|MP4| fs
+    end

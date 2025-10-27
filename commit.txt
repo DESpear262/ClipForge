@@ -1,0 +1,22 @@
+feat: initialize Tauri app shell and frontend bridge
+
+PR #1 - Tauri App Shell & Frontend Bridge
+
+Complete the foundation for ClipForge desktop video editor:
+- Initialize Tauri v1 + React (Vite) + TypeScript + Tailwind CSS project
+- Configure WebView2 integration with Rust backend
+- Implement menu bar with Import, Export, Help buttons
+- Set up secure Tauri allowlist (fs, dialog, path, process)
+- Create IPC bridge using Tauri commands and events
+- Add ErrorBoundary component for React error handling
+- Stub TauriContext for future import/export functionality
+
+Files created:
+- Frontend: package.json, vite.config.ts, tsconfig files, Tailwind setup
+- Components: MenuBar, MainView, ErrorBoundary
+- Context: TauriContext (stubs for PR #3 and #8)
+- Utils: tauriBridge IPC helpers
+- Backend: Cargo.toml, main.rs with test_ipc, open_import_dialog, open_export_dialog
+- Config: tauri.conf.json with secure allowlist
+- Docs: README.md with setup instructions
+
