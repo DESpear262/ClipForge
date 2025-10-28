@@ -34,26 +34,26 @@ const MenuBar: React.FC = () => {
   };
 
   return (
-    <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between">
+    <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between w-full">
       <div className="flex gap-4">
         <button
           onClick={handleImport}
-          className="px-4 py-2 hover:bg-gray-700 rounded transition-colors"
+          className="px-4 py-2 text-gray-900 hover:bg-gray-700 hover:text-white rounded transition-colors font-medium"
         >
           Import
         </button>
         <button
           onClick={handleExport}
-          className="px-4 py-2 hover:bg-gray-700 rounded transition-colors"
+          className="px-4 py-2 text-gray-900 hover:bg-gray-700 hover:text-white rounded transition-colors font-medium"
         >
           Export
         </button>
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-sm text-gray-400">ClipForge</span>
+        <span className="text-sm text-gray-900 font-semibold">ClipForge</span>
         <button
           onClick={handleHelp}
-          className="px-4 py-2 hover:bg-gray-700 rounded transition-colors"
+          className="px-4 py-2 text-gray-900 hover:bg-gray-700 hover:text-white rounded transition-colors font-medium"
         >
           Help
         </button>

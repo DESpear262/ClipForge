@@ -1,23 +1,30 @@
-feat: integrate FFmpeg and FFprobe sidecar binaries
+feat: implement metadata extraction with FFprobe integration
 
-PR #2 - FFmpeg Sidecar Integration
+PR #4 - Metadata Extraction (FFprobe)
 
-Complete FFmpeg integration for video metadata extraction:
-- Update tauri.conf.json to bundle ffprobe.exe alongside ffmpeg.exe
-- Add anyhow and tokio dependencies to Cargo.toml
-- Create src-tauri/src/ffmpeg.rs with probe_metadata() and execute_ffmpeg() functions
-- Implement VideoMetadata struct for structured video information
-- Add probe_video_metadata IPC command to lib.rs
-- Create src/hooks/useFFmpeg.ts React hook for frontend integration
-- Create src/types/media.ts for type definitions
-- Support duration, resolution, codec, bitrate, and file size extraction
-
-Files modified:
-- src-tauri/tauri.conf.json - added ffprobe.exe to resources
-- src-tauri/Cargo.toml - added anyhow and tokio dependencies
-- src-tauri/src/lib.rs - added ffmpeg module and probe_video_metadata command
+Complete video metadata extraction and display:
+- Enhanced VideoMetadata type with containerFormat and fps fields
+- Updated Rust ffmpeg.rs to extract additional metadata (format_name, r_frame_rate)
+- Added duration rounding to nearest 0.1s and fps parsing from fraction format
+- Created ClipCard component to display metadata in a compact card format
+- Added metadata formatting utilities (duration, file size, bitrate, resolution, fps)
+- Updated useImport to auto-probe metadata immediately after import
+- Modified ImportZone to show ClipCard instead of basic metadata display
+- Added retry functionality for failed metadata probes
+- Implemented user-friendly error handling with toast notifications
+- Fixed TypeScript verbatimModuleSyntax import errors (type-only imports)
+- Fixed button text colors for better readability (black text on buttons)
 
 Files created:
-- src-tauri/src/ffmpeg.rs - FFmpeg wrapper functions
-- src/hooks/useFFmpeg.ts - React hook for FFmpeg operations
-- src/types/media.ts - TypeScript type definitions
+- src/components/ClipCard.tsx - Metadata display component
+- src/utils/formatters.ts - Formatting utilities for display
+
+Files modified:
+- src/types/media.ts - Enhanced VideoMetadata interface
+- src-tauri/src/ffmpeg.rs - Enhanced probe_metadata with additional fields, fixed ownership error
+- src/hooks/useImport.ts - Auto-probe after import
+- src/components/ImportZone.tsx - Use ClipCard for metadata display
+- src/components/ErrorBoundary.tsx - Fixed type-only imports
+- src/hooks/useToast.ts - Removed unused import
+
+Metadata extracted: duration, resolution, codec, file size, bitrate, container format, fps

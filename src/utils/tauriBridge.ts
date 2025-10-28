@@ -1,5 +1,6 @@
-import { invoke } from "@tauri-apps/api/tauri";
-import { emit, listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 
 /**
  * Tauri IPC bridge utilities

@@ -12,6 +12,8 @@ export interface VideoMetadata {
   bitrate?: number;
   codec: string;
   size: number;
+  containerFormat?: string;
+  fps?: number;
 }
 
 /**

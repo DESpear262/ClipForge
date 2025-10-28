@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 /**
  * Video metadata structure returned by FFprobe
@@ -14,6 +13,8 @@ pub struct VideoMetadata {
     pub bitrate: Option<u64>,
     pub codec: String,
     pub size: u64,
+    pub container_format: Option<String>,
+    pub fps: Option<f64>,
 }
 
 /**
@@ -28,12 +29,8 @@ pub async fn probe_metadata(
 ) -> Result<VideoMetadata> {
     println!("Probing metadata for: {}", video_path);
 
-    let resource_path = app
-        .path_resolver()
-        .resource_dir()
-        .context("Failed to resolve resource directory")?;
-
-    let ffprobe_path = resource_path.join("bin/ffprobe.exe");
+    let resource_dir = app.path().resource_dir().context("Failed to get resource directory")?;
+    let ffprobe_path = resource_dir.join("bin/ffprobe.exe");
 
     if !ffprobe_path.exists() {
         anyhow::bail!("ffprobe.exe not found at: {:?}", ffprobe_path);
@@ -44,7 +41,7 @@ pub async fn probe_metadata(
         .arg("-v")
         .arg("error")
         .arg("-show_entries")
-        .arg("format=duration,size,bit_rate:stream=codec_name,width,height")
+        .arg("format=duration,size,bit_rate,format_name:stream=codec_name,width,height,r_frame_rate")
         .arg("-of")
         .arg("json")
         .arg(video_path)
@@ -72,6 +69,7 @@ pub async fn probe_metadata(
         duration: Option<String>,
         size: Option<String>,
         bit_rate: Option<String>,
+        format_name: Option<String>,
     }
 
     #[derive(Deserialize)]
@@ -79,6 +77,7 @@ pub async fn probe_metadata(
         codec_name: Option<String>,
         width: Option<u32>,
         height: Option<u32>,
+        r_frame_rate: Option<String>,
     }
 
     let probe_data: ProbeOutput =
@@ -93,6 +92,7 @@ pub async fn probe_metadata(
         .format
         .duration
         .and_then(|d| d.parse::<f64>().ok())
+        .map(|d| (d * 10.0).round() / 10.0) // Round to nearest 0.1s
         .unwrap_or(0.0);
 
     let width = video_stream.width.unwrap_or(0);
@@ -110,6 +110,25 @@ pub async fn probe_metadata(
         .format
         .bit_rate
         .and_then(|b| b.parse::<u64>().ok());
+    let container_format = probe_data.format.format_name;
+    
+    // Parse frame rate (e.g., "30/1" -> 30.0)
+    let fps = video_stream
+        .r_frame_rate
+        .as_ref()
+        .and_then(|rate| {
+            if let Some((num, den)) = rate.split_once('/') {
+                let numerator: f64 = num.parse().ok()?;
+                let denominator: f64 = den.parse().ok()?;
+                if denominator != 0.0 {
+                    Some((numerator / denominator * 10.0).round() / 10.0)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        });
 
     Ok(VideoMetadata {
         duration,
@@ -118,6 +137,8 @@ pub async fn probe_metadata(
         bitrate,
         codec,
         size,
+        container_format,
+        fps,
     })
 }
 
@@ -127,18 +148,15 @@ pub async fn probe_metadata(
  * Runs FFmpeg with the provided arguments and emits progress via events
  * This will be used for trimming and exporting in PR #8
  */
+#[allow(dead_code)]
 pub async fn execute_ffmpeg(
     app: &AppHandle,
     args: Vec<String>,
 ) -> Result<()> {
     println!("Executing FFmpeg with args: {:?}", args);
 
-    let resource_path = app
-        .path_resolver()
-        .resource_dir()
-        .context("Failed to resolve resource directory")?;
-
-    let ffmpeg_path = resource_path.join("bin/ffmpeg.exe");
+    let resource_dir = app.path().resource_dir().context("Failed to get resource directory")?;
+    let ffmpeg_path = resource_dir.join("bin/ffmpeg.exe");
 
     if !ffmpeg_path.exists() {
         anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
@@ -169,6 +187,7 @@ pub async fn execute_ffmpeg(
  * Parses frame information from FFmpeg's stderr stream
  * Returns percentage (0-100) based on frame count
  */
+#[allow(dead_code)]
 pub fn parse_progress(stderr_line: &str) -> Option<f64> {
     // FFmpeg outputs: "frame=  123 fps= 25 q=28.0 size=  1234kB time=00:00:05.00 bitrate=..."
     // We need to extract frame and time information

@@ -1,35 +1,48 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import React from "react";
+import MenuBar from "./components/MenuBar";
+import MainView from "./components/MainView";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { TauriProvider } from "./context/TauriContext";
+import { ProjectProvider } from "./context/ProjectContext";
+import { ToastProvider, useToastContext } from "./context/ToastContext";
+import { ToastContainer } from "./components/Toast";
 
-function App() {
-  const [count, setCount] = useState(0)
-
+/**
+ * Main content component that has access to toast context
+ */
+const AppContent: React.FC = () => {
+  const { toasts, dismissToast } = useToastContext();
+  
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <div className="flex flex-col h-screen w-full bg-gray-900 text-white overflow-hidden">
+      <MenuBar />
+      <div className="flex-1 overflow-hidden">
+        <MainView />
       </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+    </div>
+  );
+};
+
+/**
+ * Main application entry point for ClipForge
+ * 
+ * Wraps the entire application in an ErrorBoundary to handle React errors
+ * gracefully and log them to the console. Provides Tauri context for cross-component
+ * communication.
+ */
+function App() {
+  return (
+    <ErrorBoundary>
+      <TauriProvider>
+        <ProjectProvider>
+          <ToastProvider>
+            <AppContent />
+          </ToastProvider>
+        </ProjectProvider>
+      </TauriProvider>
+    </ErrorBoundary>
+  );
 }
 
-export default App
+export default App;

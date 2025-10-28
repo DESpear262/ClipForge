@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/tauri";
-import { VideoMetadata } from "../types/media";
+import { invoke } from "@tauri-apps/api/core";
+import type { VideoMetadata } from "../types/media";
 
 /**
  * Custom hook for FFmpeg operations

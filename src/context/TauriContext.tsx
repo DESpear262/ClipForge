@@ -1,5 +1,5 @@
 import React, { createContext, useContext } from "react";
-import { invoke } from "@tauri-apps/api/tauri";
+import { invoke } from "@tauri-apps/api/core";
 
 /**
  * Context interface for Tauri-related functionality
@@ -56,13 +56,18 @@ export const TauriProvider: React.FC<{ children: React.ReactNode }> = ({
   return (
     <TauriContext.Provider
       value={{
-        showImportDialog: async () => {
-          try {
-            await invoke("open_import_dialog");
-          } catch (error) {
-            console.error("Import dialog error:", error);
-          }
-        },
+  showImportDialog: async () => {
+    const isTauri = typeof (window as any).__TAURI__ !== "undefined" || typeof (window as any).__TAURI_INTERNALS__ !== "undefined";
+    if (!isTauri) {
+      // In browser dev mode, do nothing; caller should fallback to HTML file input
+      return;
+    }
+    try {
+      await invoke("open_file_dialog");
+    } catch (error) {
+      console.error("Import dialog error:", error);
+    }
+  },
         showExportDialog: async () => {
           try {
             await invoke("open_export_dialog");

@@ -23,4 +23,4 @@ dist-ssr
 *.sln
 *.sw?
 
-src-tauri/bin
+src-tauri/bin/
