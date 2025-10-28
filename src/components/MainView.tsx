@@ -1,5 +1,5 @@
 import React from "react";
-import ImportZone from "./ImportZone";
+import MediaLibrary from "./MediaLibrary";
 
 /**
  * Main content area component
@@ -8,7 +8,7 @@ import ImportZone from "./ImportZone";
  * will show video preview and timeline in future PRs
  */
 const MainView: React.FC = () => {
-  return <ImportZone />;
+  return <MediaLibrary />;
 };
 
 export default MainView;

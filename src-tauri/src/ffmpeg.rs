@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 /**
  * Video metadata structure returned by FFprobe
@@ -29,8 +29,10 @@ pub async fn probe_metadata(
 ) -> Result<VideoMetadata> {
     println!("Probing metadata for: {}", video_path);
 
-    let resource_dir = app.path().resource_dir().context("Failed to get resource directory")?;
-    let ffprobe_path = resource_dir.join("bin/ffprobe.exe");
+    let ffprobe_path = app
+        .path_resolver()
+        .resolve_resource("bin/ffprobe.exe")
+        .context("Failed to resolve ffprobe path")?;
 
     if !ffprobe_path.exists() {
         anyhow::bail!("ffprobe.exe not found at: {:?}", ffprobe_path);
@@ -155,8 +157,10 @@ pub async fn execute_ffmpeg(
 ) -> Result<()> {
     println!("Executing FFmpeg with args: {:?}", args);
 
-    let resource_dir = app.path().resource_dir().context("Failed to get resource directory")?;
-    let ffmpeg_path = resource_dir.join("bin/ffmpeg.exe");
+    let ffmpeg_path = app
+        .path_resolver()
+        .resolve_resource("bin/ffmpeg.exe")
+        .context("Failed to resolve ffmpeg path")?;
 
     if !ffmpeg_path.exists() {
         anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
@@ -176,6 +180,43 @@ pub async fn execute_ffmpeg(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("FFmpeg failed: {}", stderr);
+    }
+
+    Ok(())
+}
+
+/// Generate a WebM (VP8/Vorbis) preview as a fallback when VP9 is unavailable.
+pub async fn generate_preview_vp8(
+    app: &AppHandle,
+    input_path: &str,
+    output_path: &str,
+) -> Result<()> {
+    let ffmpeg_path = app
+        .path_resolver()
+        .resolve_resource("bin/ffmpeg.exe")
+        .context("Failed to resolve ffmpeg path")?;
+
+    if !ffmpeg_path.exists() {
+        anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
+    }
+
+    // ffmpeg -i input -c:v libvpx -b:v 1.5M -vf scale=1280:-1 -c:a libvorbis -b:a 96k -y output.webm
+    let output = tokio::process::Command::new(&ffmpeg_path)
+        .arg("-i").arg(input_path)
+        .arg("-c:v").arg("libvpx")
+        .arg("-b:v").arg("1500k")
+        .arg("-vf").arg("scale=1280:-1")
+        .arg("-c:a").arg("libvorbis")
+        .arg("-b:a").arg("96k")
+        .arg("-y")
+        .arg(output_path)
+        .output()
+        .await
+        .context("Failed to execute ffmpeg for VP8 preview")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("ffmpeg VP8 preview failed: {}", stderr);
     }
 
     Ok(())
@@ -203,5 +244,80 @@ pub fn parse_progress(stderr_line: &str) -> Option<f64> {
     // For now, just return None - actual progress calculation needs total frames
     // This will be enhanced in PR #8
     None
+}
+
+/// Generate a JPEG thumbnail at the given timestamp using ffmpeg, scaled to width 320px.
+pub async fn generate_thumbnail(
+    app: &AppHandle,
+    input_path: &str,
+    output_path: &str,
+    timestamp_sec: f64,
+) -> Result<()> {
+    let ffmpeg_path = app
+        .path_resolver()
+        .resolve_resource("bin/ffmpeg.exe")
+        .context("Failed to resolve ffmpeg path")?;
+
+    if !ffmpeg_path.exists() {
+        anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
+    }
+
+    let output = tokio::process::Command::new(&ffmpeg_path)
+        .arg("-ss").arg(format!("{}", timestamp_sec))
+        .arg("-i").arg(input_path)
+        .arg("-vframes").arg("1")
+        .arg("-vf").arg("scale=320:-1")
+        .arg("-y")
+        .arg(output_path)
+        .output()
+        .await
+        .context("Failed to execute ffmpeg for thumbnail")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("ffmpeg thumbnail failed: {}", stderr);
+    }
+
+    Ok(())
+}
+
+/// Generate a WebM (VP9/Opus) preview suitable for HTML5 playback.
+pub async fn generate_preview_webm(
+    app: &AppHandle,
+    input_path: &str,
+    output_path: &str,
+) -> Result<()> {
+    let ffmpeg_path = app
+        .path_resolver()
+        .resolve_resource("bin/ffmpeg.exe")
+        .context("Failed to resolve ffmpeg path")?;
+
+    if !ffmpeg_path.exists() {
+        anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
+    }
+
+    // ffmpeg -i input -c:v libvpx-vp9 -b:v 2M -deadline good -row-mt 1 -c:a libopus -b:a 96k -speed 4 -vf scale=1280:-1 -y output.webm
+    let output = tokio::process::Command::new(&ffmpeg_path)
+        .arg("-i").arg(input_path)
+        .arg("-c:v").arg("libvpx-vp9")
+        .arg("-b:v").arg("2000k")
+        .arg("-deadline").arg("good")
+        .arg("-row-mt").arg("1")
+        .arg("-speed").arg("4")
+        .arg("-vf").arg("scale=1280:-1")
+        .arg("-c:a").arg("libopus")
+        .arg("-b:a").arg("96k")
+        .arg("-y")
+        .arg(output_path)
+        .output()
+        .await
+        .context("Failed to execute ffmpeg for preview")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("ffmpeg preview failed: {}", stderr);
+    }
+
+    Ok(())
 }
 

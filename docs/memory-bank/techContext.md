@@ -11,10 +11,10 @@
 - **State Management**: React Context + Hooks
 
 ### Backend
-- **Framework**: Tauri v2 (Rust)
+- **Framework**: Tauri v1 (Rust)
 - **IPC**: Tauri Commands & Events
 - **Media Processing**: FFmpeg + FFprobe (native sidecars)
-- **File Handling**: Tauri FS & Dialog APIs (`@tauri-apps/plugin-fs`)
+- **File Handling**: Tauri FS & Dialog APIs (`@tauri-apps/api`)
 
 ### Platform
 - **OS**: Windows 10/11
@@ -70,12 +70,11 @@ ClipForge/
 - Konva.js (to be added)
 
 ### Backend (Cargo.toml)
-- tauri (v2)
-- tauri-plugin-fs (v2)
-- tauri-plugin-dialog (v2)
+- tauri (v1)
 - serde / serde_json
 - tokio (async runtime)
 - anyhow (error handling)
+- rusqlite (bundled)
 
 ## Technical Constraints
 
@@ -83,7 +82,7 @@ ClipForge/
 - **Windows Development**: Must use Windows for development (MSVC requirement)
 - **FFmpeg**: Must bundle native binaries as sidecars
 - **WebView2**: Requires system WebView2 runtime
-- **Tauri v2**: Using v2 APIs and capabilities
+- **Tauri v1**: Using v1 allowlist and path resolver
 
 ### Runtime
 - **Offline Operation**: No internet required for MVP

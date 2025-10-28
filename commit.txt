@@ -1,21 +1,30 @@
-feat: stabilize video loading (asset URL + Blob fallback), fix fs capabilities, add diagnostics
+feat: migrate to Tauri v1, add WebM preview pipeline, simplify player UI
 
-PR #5 - HTML5 Video Preview (stabilization)
+Block C – Video Preview (stabilization via preview proxies)
 
-Key changes:
-- VideoPlayer now resolves sources via `convertFileSrc()` (asset protocol) and gracefully falls back to a Blob when `asset.localhost` is unavailable in dev.
-- Implemented MIME-aware Blob fallback using `@tauri-apps/plugin-fs.readFile` (mp4/webm/mov), with CSP support for `blob:` already configured.
-- Fixed plugin-fs capabilities: replaced invalid scoped entries with `fs:read-all` plus a global `fs:scope` allow list to permit reads from user-selected paths (e.g., `C:\**`).
-- Added extensive diagnostics in `VideoPlayer`: HEAD preflight logs for asset URL, media event listeners (canplay/loadedmetadata/stalled/waiting/etc.), and readyState/networkState dumps. This greatly improves troubleshooting.
+Changes:
+- Migrated backend/tooling to Tauri v1 (stable allowlist, path resolver).
+- Implemented WebM preview generation on import (VP9/Opus with VP8/Vorbis fallback).
+- Added ensure_preview(video_path) to backfill previews for existing rows.
+- Playback now prefers preview_path and uses Blob URLs for `.webm` (no asset dependency).
+- Kept legacy MP4 path with asset+Blob fallback as last resort.
+- Removed duplicate out-of-picture controls; rely on native in-picture controls.
 
-Files modified:
-- src/components/VideoPlayer.tsx – Source resolution, Blob fallback, diagnostic logging, event-state tracing.
-- src-tauri/capabilities/fs-read.json – Proper `fs:read-all` + `fs:scope` configuration.
-- docs/memory-bank/* – Updated architecture docs: media loading flow, capabilities, dev-mode behavior, and current status.
+Config/Deps:
+- tauri.conf.json rewritten for v1 allowlist (fs.readFile, dialog.*, protocol.asset). CSP includes asset/data/blob for media/img.
+- Cargo.toml uses tauri = "1"; removed v2 plugins.
+- Frontend: `@tauri-apps/api` v1; switched to `invoke/convertFileSrc` from api/tauri and `readBinaryFile` from api/fs.
+
+DB/Files:
+- SQLite in AppData/ClipForge/clipforge.db; migration adds `preview_path`.
+- Thumbnails in AppData/.../thumbnails, previews in AppData/.../previews.
+
+UI:
+- MediaLibrary shows grid, auto-generates preview when missing, and refreshes.
+- Menu buttons restyled (black text on light gray).
 
 Notes:
-- In some dev environments, WebView2 refuses `asset.localhost` (ERR_CONNECTION_REFUSED). This is benign: the player now falls back to Blob and playback continues.
-- Production builds typically serve asset URLs successfully.
+- Dev asset.localhost may refuse; previews use Blob so playback remains reliable.
 
 Next:
-- PR #6: Timeline (Konva) and playhead sync.
+- PR #6 Timeline (Konva) and playhead sync; PR #7/8 trimming and export.

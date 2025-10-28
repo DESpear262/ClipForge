@@ -1,5 +1,5 @@
 import React, { createContext, useContext } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/tauri";
 
 /**
  * Context interface for Tauri-related functionality
@@ -58,12 +58,18 @@ export const TauriProvider: React.FC<{ children: React.ReactNode }> = ({
       value={{
   showImportDialog: async () => {
     const isTauri = typeof (window as any).__TAURI__ !== "undefined" || typeof (window as any).__TAURI_INTERNALS__ !== "undefined";
-    if (!isTauri) {
-      // In browser dev mode, do nothing; caller should fallback to HTML file input
-      return;
-    }
+    if (!isTauri) return;
     try {
-      await invoke("open_file_dialog");
+      const result = await invoke<{ path: string; name: string } | null>("open_file_dialog");
+      if (result && result.path) {
+        try {
+          const media = await invoke<any>("import_video", { videoPath: result.path });
+          // Notify listeners to refresh media library
+          window.dispatchEvent(new CustomEvent("media-imported", { detail: media }));
+        } catch (e) {
+          console.error("import_video failed:", e);
+        }
+      }
     } catch (error) {
       console.error("Import dialog error:", error);
     }

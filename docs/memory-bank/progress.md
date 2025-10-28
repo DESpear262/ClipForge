@@ -13,8 +13,9 @@
 - ✅ FFprobe metadata extraction (PR #2)
 - ✅ File import via native dialog with format validation (PR #3)
 - ✅ Metadata display wiring via context (PR #4)
-- ✅ HTML5 video preview with asset URL via `convertFileSrc()` (PR #5)
-- ✅ Blob fallback path implemented for dev environments where `asset.localhost` is unavailable
+- ✅ Migration to Tauri v1 for stability
+- ✅ HTML5 video preview via WebM previews (Blob playback) (PR #5 stabilization)
+- ✅ Blob fallback path for legacy MP4s (last resort)
 
 ### Infrastructure
 - ✅ Tauri + React + Vite project initialized
@@ -64,7 +65,7 @@
 ## Known Issues 🐛
 
 ### Current
-- In dev, `asset.localhost` GET/HEAD may be refused by WebView2. The player falls back to Blob and playback proceeds. Console shows benign GET/HEAD failures. Consider preflight-and-gate to keep console clean.
+- Dev asset.host can be refused; playback uses preview Blob, so impact is minimized.
 
 ### Anticipated (Based on Architecture)
 - FFmpeg path resolution in production builds

@@ -1,7 +1,7 @@
 # Active Context: ClipForge
 
 ## Current Work Focus
-**Primary Task**: Stabilize video import/preview pipeline on Tauri v2 using asset URLs via convertFileSrc()
+**Primary Task**: Stabilize video import/preview pipeline. We migrated to Tauri v1 for stability and use WebM previews with Blob playback.
 
 ## Recent Changes
 - ✅ Read and analyzed existing project documentation
@@ -13,12 +13,12 @@
 **PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅
 
 ### What Works
-- Tauri application launches successfully (v2)
+- Tauri application launches successfully (v1)
 - React frontend renders in WebView2
 - Import via native file dialog; supported formats validated (mp4/mov/webm)
 - FFprobe metadata extraction via Rust sidecar wrappers
-- HTML5 video preview using asset URLs via `convertFileSrc()`
-- Blob fallback path when asset host is unavailable in dev
+- HTML5 video preview uses WebM previews (generated on import) and Blob playback
+- Asset is used only for static assets/thumbs; playback does not depend on asset in dev
 - CSP allows `asset:` and `blob:` media sources
 - Error boundary catches React errors gracefully
 - IPC bridge and context wiring
@@ -27,14 +27,14 @@
 - **ProjectContext** stores clips and playback state
 - **useImport** invokes `open_file_dialog`, validates format, adds clip, triggers probe
 - **useFFmpeg** invokes `probe_video_metadata` to read metadata
-- **VideoPlayer** uses asset URLs with time/seek controls, rich diagnostics, and Blob fallback
+- **VideoPlayer** uses Blob URLs for `.webm` previews, rich diagnostics, and removes external duplicate controls (native controls only)
 - **CSP** allows `asset:` and `blob:` media sources
 
 ### Next Immediate Steps
 1. Implement timeline (Konva) and sync playhead
 2. Implement trim UI/state and export pipeline with FFmpeg
 3. Continue Memory Bank maintenance
-4. Optional: preflight-and-gate asset attempts in dev to prevent console noise
+4. Optional: serve thumbnails via blob to avoid asset errors in dev
 
 ## Active Decisions
 

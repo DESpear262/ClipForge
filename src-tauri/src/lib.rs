@@ -2,129 +2,25 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ffmpeg;
+mod db;
 
 use ffmpeg::probe_metadata;
-use tauri_plugin_dialog::DialogExt;
-use tauri::http::{Response, header::{CONTENT_TYPE, ACCEPT_RANGES, CONTENT_RANGE}};
-use urlencoding::decode;
-use std::{fs, path::PathBuf, fs::File, io::{Read, Seek, SeekFrom}};
+use tauri::Manager;
+use std::sync::{Arc, Mutex};
+use rusqlite::Connection;
+use tauri::api::dialog::FileDialogBuilder;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
-    .plugin(tauri_plugin_log::Builder::default().build())
-    .plugin(tauri_plugin_dialog::init())
-    .plugin(tauri_plugin_shell::init())
-    .plugin(tauri_plugin_fs::init())
-    .register_uri_scheme_protocol("stream", |app, request| {
-      // stream://video?path=<encoded-absolute-path>
-      let uri = request.uri().to_string();
-      let path_param = uri.split_once("path=")
-        .and_then(|(_, p)| Some(p.to_string()))
-        .unwrap_or_default();
-
-      let decoded = decode(&path_param).unwrap_or_default().to_string();
-      let path = PathBuf::from(decoded);
-
-      // Determine MIME by extension
-      let content_type = match path.extension().and_then(|e| e.to_str()).unwrap_or("") {
-        "mp4" => "video/mp4",
-        "webm" => "video/webm",
-        "mov" => "video/quicktime",
-        _ => "application/octet-stream",
-      };
-
-      // Open file and get metadata
-      let mut file = match File::open(&path) {
-        Ok(f) => f,
-        Err(e) => {
-          let body = format!("Failed to open file: {}", e);
-          return Response::builder()
-            .status(404)
-            .body(body.as_bytes().to_vec())
-            .expect("failed to build error response");
-        }
-      };
-
-      let file_len = match file.metadata() {
-        Ok(m) => m.len(),
-        Err(e) => {
-          let body = format!("Failed to read file metadata: {}", e);
-          return Response::builder()
-            .status(500)
-            .body(body.as_bytes().to_vec())
-            .expect("failed to build error response");
-        }
-      };
-
-      // Parse Range header for partial content support
-      let range_header = request
-        .headers()
-        .get("Range")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-
-      if let Some(r) = range_header.strip_prefix("bytes=") {
-        let (start, end) = if let Some((s, e)) = r.split_once('-') {
-          let s: u64 = s.parse().unwrap_or(0);
-          let e: u64 = if e.is_empty() { file_len.saturating_sub(1) } else { e.parse().unwrap_or(file_len.saturating_sub(1)) };
-          (s, e.min(file_len.saturating_sub(1)))
-        } else {
-          (0, file_len.saturating_sub(1))
-        };
-
-        if start >= file_len {
-          // Invalid range
-          let body = format!("Requested range not satisfiable");
-          return Response::builder()
-            .status(416)
-            .header(CONTENT_RANGE, format!("bytes */{}", file_len))
-            .body(body.as_bytes().to_vec())
-            .expect("failed to build response");
-        }
-
-        let chunk_len = end.saturating_sub(start) + 1;
-        let mut buf = vec![0u8; chunk_len as usize];
-        let _ = file.seek(SeekFrom::Start(start));
-        if let Err(e) = file.read_exact(&mut buf) {
-          let body = format!("Failed to read range: {}", e);
-          return Response::builder()
-            .status(500)
-            .body(body.as_bytes().to_vec())
-            .expect("failed to build response");
-        }
-
-        return Response::builder()
-          .status(206)
-          .header(CONTENT_TYPE, content_type)
-          .header(ACCEPT_RANGES, "bytes")
-          .header(CONTENT_RANGE, format!("bytes {}-{}/{}", start, end, file_len))
-          .body(buf)
-          .expect("failed to build response");
-      }
-
-      // No Range header → serve full file
-      let mut buf = Vec::with_capacity(file_len as usize);
-      if let Err(e) = file.read_to_end(&mut buf) {
-        let body = format!("Failed to read file: {}", e);
-        return Response::builder()
-          .status(500)
-          .body(body.as_bytes().to_vec())
-          .expect("failed to build response");
-      }
-
-      Response::builder()
-        .status(200)
-        .header(CONTENT_TYPE, content_type)
-        .header(ACCEPT_RANGES, "bytes")
-        .body(buf)
-        .expect("failed to build response")
-    })
-    .setup(|_app| {
+    .setup(|app| {
       // Initialize logging to console
       println!("ClipForge v0.1.0-mvp starting...");
       println!("FFmpeg module loaded");
-      
+      // Open DB and manage connection
+      let handle = app.handle();
+      let conn = db::open_db(&handle).expect("Failed to open DB");
+      app.manage::<Arc<Mutex<Connection>>>(Arc::new(Mutex::new(conn)));
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
@@ -132,7 +28,11 @@ pub fn run() {
       open_import_dialog,
       open_export_dialog,
       probe_video_metadata,
-      open_file_dialog
+      open_file_dialog,
+      import_video,
+      get_media_library,
+      delete_media_item,
+      ensure_preview
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
@@ -200,16 +100,13 @@ async fn open_file_dialog(
 ) -> Result<Option<serde_json::Value>, String> {
   println!("[open_file_dialog] Command invoked");
   
-  // Use the dialog plugin's app context
-  let dialog = app.dialog();
-  
   // Create a channel to receive the result from the callback
   let (tx, rx) = std::sync::mpsc::channel();
   
-  dialog.file()
+  FileDialogBuilder::new()
     .add_filter("Video Files", &["mp4", "mov", "webm"])
     .pick_file(move |path_opt| {
-      let _ = tx.send(path_opt);
+      let _ = tx.send(path_opt.map(|p| p));
     });
   
   // Wait for the result
@@ -217,8 +114,7 @@ async fn open_file_dialog(
     Ok(Some(path)) => {
       println!("[open_file_dialog] File selected: {:?}", path);
       
-      // FilePath is an enum, convert to PathBuf to access methods
-      let path_buf = path.into_path().map_err(|e| format!("Failed to get path: {}", e))?;
+      let path_buf = path; // v1 returns PathBuf directly
       
       let file_name = path_buf
         .file_name()
@@ -250,4 +146,163 @@ async fn open_file_dialog(
       Err(format!("Failed to get dialog result: {}", e))
     }
   }
+}
+
+#[derive(serde::Serialize)]
+struct MediaDto {
+  id: i64,
+  path: String,
+  filename: String,
+  duration: Option<f64>,
+  width: Option<i64>,
+  height: Option<i64>,
+  file_size: Option<i64>,
+  format: Option<String>,
+  codec: Option<String>,
+  fps: Option<f64>,
+  thumbnail_path: Option<String>,
+  preview_path: Option<String>,
+  created_at: String,
+}
+
+#[tauri::command]
+async fn import_video(
+  app: tauri::AppHandle,
+  state: tauri::State<'_, Arc<Mutex<Connection>>>,
+  video_path: String,
+) -> Result<serde_json::Value, String> {
+  // Validate path
+  if !std::path::Path::new(&video_path).exists() {
+    return Err("File does not exist".into());
+  }
+
+  // Extract filename
+  let filename = std::path::Path::new(&video_path)
+    .file_name()
+    .and_then(|n| n.to_str())
+    .unwrap_or("unknown")
+    .to_string();
+
+  // Probe metadata
+  let meta = probe_metadata(&app, &video_path)
+    .await
+    .map_err(|e| format!("Probe failed: {}", e))?;
+
+  // Generate thumbnail
+  let thumb_dir = app.path_resolver().app_data_dir().ok_or("app_data_dir not found")?
+    .join("thumbnails");
+  std::fs::create_dir_all(&thumb_dir).map_err(|e| e.to_string())?;
+  let thumb_path = thumb_dir.join(format!("{}_thumb.jpg", filename));
+  ffmpeg::generate_thumbnail(&app, &video_path, thumb_path.to_string_lossy().as_ref(), 1.0)
+    .await
+    .map_err(|e| format!("Thumbnail failed: {}", e))?;
+
+  // Generate preview (WebM)
+  let preview_dir = app.path_resolver().app_data_dir().ok_or("app_data_dir not found")?
+    .join("previews");
+  std::fs::create_dir_all(&preview_dir).map_err(|e| e.to_string())?;
+  let preview_path = preview_dir.join(format!("{}.webm", filename));
+  ffmpeg::generate_preview_webm(&app, &video_path, preview_path.to_string_lossy().as_ref())
+    .await
+    .map_err(|e| format!("Preview failed: {}", e))?;
+
+  // Insert DB
+  let conn = state.inner().lock().unwrap();
+  let id = db::insert_media(
+    &conn,
+    &video_path,
+    &filename,
+    Some(meta.duration),
+    Some(meta.width as i64),
+    Some(meta.height as i64),
+    Some(meta.size as i64),
+    meta.container_format.as_deref(),
+    Some(meta.codec.as_str()),
+    meta.fps,
+    Some(thumb_path.to_string_lossy().as_ref()),
+    Some(preview_path.to_string_lossy().as_ref()),
+    None,
+  ).map_err(|e| format!("DB insert failed: {}", e))?;
+
+  Ok(serde_json::json!({
+    "id": id,
+    "path": video_path,
+    "filename": filename,
+    "duration": meta.duration,
+    "width": meta.width,
+    "height": meta.height,
+    "file_size": meta.size,
+    "format": meta.container_format,
+    "codec": meta.codec,
+    "fps": meta.fps,
+    "thumbnail_path": thumb_path.to_string_lossy(),
+    "preview_path": preview_path.to_string_lossy(),
+  }))
+}
+
+#[tauri::command]
+async fn get_media_library(
+  state: tauri::State<'_, Arc<Mutex<Connection>>>,
+) -> Result<Vec<MediaDto>, String> {
+  let conn = state.inner().lock().unwrap();
+  let rows = db::list_media(&conn).map_err(|e| format!("DB error: {}", e))?;
+  Ok(rows.into_iter().map(|r| MediaDto {
+    id: r.id,
+    path: r.path,
+    filename: r.filename,
+    duration: r.duration,
+    width: r.width,
+    height: r.height,
+    file_size: r.file_size,
+    format: r.format,
+    codec: r.codec,
+    fps: r.fps,
+    thumbnail_path: r.thumbnail_path,
+    preview_path: r.preview_path,
+    created_at: r.created_at,
+  }).collect())
+}
+
+#[tauri::command]
+async fn delete_media_item(
+  state: tauri::State<'_, Arc<Mutex<Connection>>>,
+  id: i64,
+) -> Result<(), String> {
+  let conn = state.inner().lock().unwrap();
+  db::delete_media(&conn, id).map_err(|e| format!("DB error: {}", e))
+}
+
+/// Ensure a WebM preview exists for the given absolute video path; returns preview_path
+#[tauri::command]
+async fn ensure_preview(
+  app: tauri::AppHandle,
+  state: tauri::State<'_, Arc<Mutex<Connection>>>,
+  video_path: String,
+) -> Result<String, String> {
+  let filename = std::path::Path::new(&video_path)
+    .file_name()
+    .and_then(|n| n.to_str())
+    .unwrap_or("unknown")
+    .to_string();
+
+  let preview_dir = app.path_resolver().app_data_dir().ok_or("app_data_dir not found")?
+    .join("previews");
+  std::fs::create_dir_all(&preview_dir).map_err(|e| e.to_string())?;
+  let preview_path = preview_dir.join(format!("{}.webm", filename));
+
+  // If file already exists, just update DB and return
+  if !preview_path.exists() {
+    if let Err(e) = ffmpeg::generate_preview_webm(&app, &video_path, preview_path.to_string_lossy().as_ref()).await {
+      println!("[ensure_preview] VP9 failed: {}. Trying VP8...", e);
+      ffmpeg::generate_preview_vp8(&app, &video_path, preview_path.to_string_lossy().as_ref())
+        .await
+        .map_err(|e| format!("Preview generation failed: {}", e))?;
+    }
+  }
+
+  let preview_str = preview_path.to_string_lossy().to_string();
+  let conn = state.inner().lock().unwrap();
+  db::update_preview_path(&conn, &video_path, &preview_str)
+    .map_err(|e| format!("DB error: {}", e))?;
+  Ok(preview_str)
 }

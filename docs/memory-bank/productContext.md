@@ -13,7 +13,7 @@ Many video editors are either too heavy (Premiere, DaVinci), web-based (Canva, C
 ## How It Should Work
 The user experience follows a linear workflow:
 1. **Import**: Drag-and-drop video files or use file picker
-2. **Preview**: Watch video in player, see current timestamp
+2. **Preview**: Watch video in player; to ensure reliability on Windows, the app auto-generates a WebM preview and plays that (no OS codec dependency)
 3. **Trim**: Adjust start and end handles on timeline to set range
 4. **Export**: Click export button, choose save location, get trimmed MP4
 

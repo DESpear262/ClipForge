@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { readFile } from "@tauri-apps/plugin-fs";
+import { convertFileSrc } from "@tauri-apps/api/tauri";
+import { readBinaryFile } from "@tauri-apps/api/fs";
 import type { ProjectClip } from "../context/ProjectContext";
 import { formatDuration } from "../utils/formatters";
 
@@ -71,7 +71,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate }) => {
    */
   const handlePlayPause = () => {
     if (!videoRef.current) return;
-
+    console.log("[VideoPlayer] handlePlayPause: isPlaying=", isPlaying, "ready=", videoRef.current.readyState);
     if (isPlaying) {
       videoRef.current.pause();
     } else {
@@ -115,7 +115,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate }) => {
    */
   const handleLoadedMetadata = () => {
     if (!videoRef.current) return;
-
+    console.log("[VideoPlayer] loadedmetadata: duration=", videoRef.current.duration, "videoSrc=", videoSrc);
     setDuration(videoRef.current.duration);
     setIsLoading(false);
     setHasError(false);
@@ -131,6 +131,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate }) => {
    * Handle video error
    */
   const handleError = () => {
+    if (videoRef.current) {
+      const err = (videoRef.current as any).error;
+      console.warn("[VideoPlayer] error event:", err);
+      logVideoState("onerror");
+    }
     setIsLoading(false);
     setHasError(true);
     setIsPlaying(false);
@@ -149,30 +154,59 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate }) => {
     setIsLoading(true);
     setHasError(false);
     try {
-      const url = convertFileSrc(clip.filePath);
-      console.log("[VideoPlayer] Using asset URL:", url);
-      setVideoSrc(url);
-      // Fire a diagnostic HEAD request for visibility (non-blocking for playback)
-      // This helps us log why asset.localhost might fail in dev.
-      try {
-        fetch(url, { method: "HEAD" })
-          .then(async (res) => {
-            console.log("[VideoPlayer] HEAD asset status:", res.status, res.statusText);
-            console.log("[VideoPlayer] HEAD asset headers:", Object.fromEntries(res.headers.entries()));
-          })
-          .catch((err) => {
-            console.warn("[VideoPlayer] HEAD asset failed:", err);
-          });
-      } catch (e) {
-        console.warn("[VideoPlayer] HEAD asset threw:", e);
+      // Clear previous source first to force a clean re-init
+      setVideoSrc("");
+      if (clip.filePath.toLowerCase().endsWith(".webm")) {
+        // For previews, avoid asset.localhost entirely; read and create blob directly
+        (async () => {
+          try {
+            console.time("[VideoPlayer] readFile(.webm)");
+            const bytes = await readBinaryFile(clip.filePath);
+            console.timeEnd("[VideoPlayer] readFile(.webm)");
+            const uint = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes as any);
+            const buffer = uint.buffer.slice(uint.byteOffset, uint.byteOffset + uint.byteLength);
+            const blob = new Blob([buffer], { type: "video/webm" });
+            const blobUrl = URL.createObjectURL(blob);
+            console.log("[VideoPlayer] Blob URL (.webm) created, bytes=", uint.byteLength);
+            setVideoSrc(blobUrl);
+          } catch (e) {
+            console.error("[VideoPlayer] Failed to create blob from .webm:", e);
+            setHasError(true);
+          } finally {
+            setIsLoading(false);
+          }
+        })();
+      } else {
+        const url = convertFileSrc(clip.filePath);
+        console.log("[VideoPlayer] Using asset URL:", url);
+        setVideoSrc(url);
       }
     } catch (e) {
       console.error("Failed to resolve video path:", e);
       setHasError(true);
     } finally {
-      setIsLoading(false);
+      if (!clip.filePath.toLowerCase().endsWith(".webm")) {
+        setIsLoading(false);
+      }
     }
   }, [clip.filePath]);
+
+  // When the source changes, explicitly reload the video element
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !videoSrc) return;
+    try {
+      // Ensure the element reloads the new source
+      console.log("[VideoPlayer] load() start for src:", videoSrc);
+      video.src = videoSrc;
+      video.load();
+      setTimeout(() => {
+        logVideoState("after-load-timeout-100ms");
+      }, 100);
+    } catch (e) {
+      console.warn("[VideoPlayer] load() failed: ", e);
+    }
+  }, [videoSrc]);
 
   // Fallback: if the asset URL fails to load, read file and create a blob URL
   useEffect(() => {
@@ -184,11 +218,26 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate }) => {
         console.warn("[VideoPlayer] Asset URL failed, falling back to blob...");
         setIsLoading(true);
         logVideoState("onerror-before-fallback");
-        const bytes = await readFile(clip.filePath);
-        const blob = new Blob([bytes], { type: mimeFromExt(clip.filePath) });
+        console.time("[VideoPlayer] readFile");
+        const bytes = await readBinaryFile(clip.filePath);
+        console.timeEnd("[VideoPlayer] readFile");
+        // Normalize to a contiguous ArrayBuffer for Blob
+        const uint = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes as any);
+        const buffer = uint.buffer.slice(uint.byteOffset, uint.byteOffset + uint.byteLength);
+        const mime = mimeFromExt(clip.filePath);
+        const blob = new Blob([buffer], { type: mime });
         const blobUrl = URL.createObjectURL(blob);
-        console.log("[VideoPlayer] Blob URL created, length(bytes)=", bytes.byteLength);
+        console.log("[VideoPlayer] Blob URL created, bytes=", uint.byteLength, "mime=", mime);
         setVideoSrc(blobUrl);
+        // Ensure the element reloads to the blob immediately
+        const v = videoRef.current;
+        if (v) {
+          v.src = blobUrl;
+          v.load();
+          setTimeout(() => {
+            logVideoState("after-blob-load-timeout-100ms");
+          }, 100);
+        }
       } catch (err) {
         console.error("[VideoPlayer] Fallback failed:", err);
         setHasError(true);
@@ -203,7 +252,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate }) => {
     };
   }, [clip.filePath, videoSrc]);
 
-  // Set up event listeners
+  // Set up event listeners after a source is set
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -238,7 +287,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate }) => {
         "stalled","suspend","waiting"
       ].forEach((name) => video.removeEventListener(name, log));
     };
-  }, []);
+  }, [videoSrc]);
 
   // No blob URL cleanup needed when using convertFileSrc
 
@@ -266,11 +315,21 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate }) => {
       <div className="relative">
         {videoSrc ? (
           <video
+            key={videoSrc}
             ref={videoRef}
-            src={videoSrc}
             className="w-full h-auto max-h-96"
-            preload="metadata"
-          />
+            preload="auto"
+            controls
+            playsInline
+            onLoadedMetadata={handleLoadedMetadata}
+            onTimeUpdate={handleTimeUpdate}
+            onPlay={handlePlay}
+            onPause={handlePause}
+            onError={handleError}
+            onEnded={handleEnded}
+          >
+            <source src={videoSrc} type={mimeFromExt(clip.filePath)} />
+          </video>
         ) : (
           <div className="w-full h-60 bg-black" />
         )}
@@ -283,38 +342,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate }) => {
         )}
       </div>
 
-      {/* Custom Controls */}
-      <div className="p-4 space-y-3">
-        {/* Seek Bar */}
-        <div className="flex items-center space-x-3">
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={seekProgress}
-            onChange={handleSeek}
-            className="flex-1 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
-            disabled={isLoading}
-          />
-        </div>
-
-        {/* Control Buttons and Time */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={handlePlayPause}
-              disabled={isLoading}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-black font-semibold disabled:opacity-50"
-            >
-              {isPlaying ? "Pause" : "Play"}
-            </button>
-          </div>
-
-          <div className="text-white font-mono text-sm">
-            {formatDuration(currentTime)} / {formatDuration(duration)}
-          </div>
-        </div>
-      </div>
+      {/* Native controls handle play/pause/seek/time; external controls removed */}
     </div>
   );
 };

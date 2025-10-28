@@ -1,14 +1,15 @@
 {
-  "productName": "ClipForge",
-  "version": "0.1.0-mvp",
-  "identifier": "com.clipforge.app",
-  "build": {
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+  "package": {
+    "productName": "ClipForge",
+    "version": "0.1.0-mvp"
   },
-  "app": {
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:1420",
+    "distDir": "../dist"
+  },
+  "tauri": {
     "windows": [
       {
         "title": "ClipForge",
@@ -17,28 +18,41 @@
         "minWidth": 800,
         "minHeight": 600,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "fileDropEnabled": true
       }
     ],
+    "allowlist": {
+      "all": false,
+      "dialog": { "open": true, "save": true },
+      "fs": {
+        "readFile": true,
+        "scope": ["**"]
+      },
+      "protocol": {
+        "asset": true,
+        "assetScope": ["**"]
+      },
+      "shell": { "open": true }
+    },
+    "bundle": {
+      "identifier": "com.clipforge.app",
+      "active": true,
+      "targets": ["nsis"],
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "resources": [
+        "bin/ffmpeg.exe",
+        "bin/ffprobe.exe"
+      ]
+    },
     "security": {
-      "capabilities": ["fs-read"],
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' tauri: asset: http://asset.localhost https://asset.localhost stream: data: blob:; media-src 'self' tauri: asset: http://asset.localhost https://asset.localhost stream: data: blob:; connect-src 'self' http://localhost:1420 tauri: asset: http://asset.localhost https://asset.localhost stream:;"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data: blob:; media-src 'self' asset: data: blob:; connect-src 'self' http://localhost:1420 asset:;"
     }
-  },
-  "bundle": {
-    "active": true,
-    "targets": ["nsis"],
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ],
-    "resources": [
-      "bin/ffmpeg.exe",
-      "bin/ffprobe.exe"
-    ]
-  },
-  "plugins": {}
+  }
 }

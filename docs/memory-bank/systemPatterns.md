@@ -33,25 +33,21 @@ React UI ←→ Tauri Commands ←→ Rust Backend
 - **Components**: MenuBar, MainView, ErrorBoundary, VideoPlayer (planned), Timeline (planned)
 - **Contexts**: TauriContext for app-wide actions, TimelineContext (planned)
 
-### 4. File Path Resolution
-- **Primary**: Use `convertFileSrc()` to expose local files via the asset protocol (Tauri v2).
-  - Produces URLs like `http://asset.localhost/C%3A%5Cpath%5Cto%5Cfile.mp4`.
-  - Allowed by CSP via `media-src ... asset:` (already configured).
-- **Fallback**: If the asset host is not reachable in dev (e.g., WebView2 returns `net::ERR_CONNECTION_REFUSED`), fall back to a Blob URL:
-  - Read bytes with `@tauri-apps/plugin-fs.readFile(path)` under capability `fs:read-all` with a permissive `fs:scope`.
-  - Construct a `Blob` with the correct MIME based on extension (mp4/webm/mov).
-  - Assign `video.src = blobUrl`.
-- **CSP**: `blob:` must be present in `media-src` (configured). This is required for the fallback path.
-- **State**: Store clip path/name + metadata in `ProjectContext`; the player derives the source from `clip.filePath` at render time.
+### 4. Playback Strategy (Tauri v1)
+- **Preferred**: Use WebM preview files and play them via Blob URLs.
+  - Read bytes with `@tauri-apps/api/fs.readBinaryFile(path)`; construct `Blob("video/webm")`.
+  - Avoids asset.localhost and OS codec variability.
+- **Legacy/static**: Use `convertFileSrc()` for thumbnails/static assets as needed.
+- **CSP**: `blob:` present in `media-src` and `img-src`.
+- **State**: Library rows store original `path` and `preview_path`; UI prefers `preview_path` for playback.
 
 ### Media Loading Flow (Implementation)
 1. Import returns `{ path, name }` from the Rust dialog command.
 2. `useImport` validates format, adds a `ProjectClip` to context, and probes metadata via `probe_video_metadata`.
 3. `VideoPlayer` logic:
-   - Build asset URL via `convertFileSrc(filePath)` and assign to `<video src>`.
-   - In dev, perform a HEAD to the asset URL for visibility; log status/headers. This HEAD is best-effort and non-blocking.
-   - If the `<video>` element emits `error`, log ready/network state and fall back to Blob by reading the file with plugin-fs, then set `src` to the Blob URL.
-   - Register rich media event listeners (e.g., `canplay`, `loadedmetadata`, `stalled`, `waiting`, `progress`) to log `readyState` and `networkState`.
+   - For `.webm` previews: read bytes → Blob URL → `<video>` with typed `<source>`.
+   - For legacy `.mp4`: attempt asset URL, then Blob fallback as last resort.
+   - Register media event listeners and log ready/network state.
 
 ### Capabilities
 - Capability file `src-tauri/capabilities/fs-read.json`:

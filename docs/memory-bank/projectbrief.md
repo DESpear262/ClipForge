@@ -1,3 +1,19 @@
+# ClipForge - Project Brief
+
+Goal: Lightweight desktop video editor for Windows using Tauri (Rust backend) and React (frontend).
+
+MVP scope:
+- Import a single video, preview playback, show key metadata.
+- Timeline and trimming (subsequent PRs), export via FFmpeg.
+
+Key constraints/decisions:
+- Target Windows 11; prioritize reliability over footprint.
+- Use Tauri v1 (stable) with WebView2; React + TypeScript UI.
+- Bundle FFmpeg/FFprobe as sidecars.
+
+Current architecture highlights:
+- Media import persistency via SQLite; thumbs and preview files stored in AppData.
+- Playback uses a transcode-to-WebM preview to avoid OS codec variability.
 # Project Brief: ClipForge
 
 ## Overview
