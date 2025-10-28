@@ -1,22 +1,23 @@
-feat: initialize Tauri app shell and frontend bridge
+feat: integrate FFmpeg and FFprobe sidecar binaries
 
-PR #1 - Tauri App Shell & Frontend Bridge
+PR #2 - FFmpeg Sidecar Integration
 
-Complete the foundation for ClipForge desktop video editor:
-- Initialize Tauri v1 + React (Vite) + TypeScript + Tailwind CSS project
-- Configure WebView2 integration with Rust backend
-- Implement menu bar with Import, Export, Help buttons
-- Set up secure Tauri allowlist (fs, dialog, path, process)
-- Create IPC bridge using Tauri commands and events
-- Add ErrorBoundary component for React error handling
-- Stub TauriContext for future import/export functionality
+Complete FFmpeg integration for video metadata extraction:
+- Update tauri.conf.json to bundle ffprobe.exe alongside ffmpeg.exe
+- Add anyhow and tokio dependencies to Cargo.toml
+- Create src-tauri/src/ffmpeg.rs with probe_metadata() and execute_ffmpeg() functions
+- Implement VideoMetadata struct for structured video information
+- Add probe_video_metadata IPC command to lib.rs
+- Create src/hooks/useFFmpeg.ts React hook for frontend integration
+- Create src/types/media.ts for type definitions
+- Support duration, resolution, codec, bitrate, and file size extraction
+
+Files modified:
+- src-tauri/tauri.conf.json - added ffprobe.exe to resources
+- src-tauri/Cargo.toml - added anyhow and tokio dependencies
+- src-tauri/src/lib.rs - added ffmpeg module and probe_video_metadata command
 
 Files created:
-- Frontend: package.json, vite.config.ts, tsconfig files, Tailwind setup
-- Components: MenuBar, MainView, ErrorBoundary
-- Context: TauriContext (stubs for PR #3 and #8)
-- Utils: tauriBridge IPC helpers
-- Backend: Cargo.toml, main.rs with test_ipc, open_import_dialog, open_export_dialog
-- Config: tauri.conf.json with secure allowlist
-- Docs: README.md with setup instructions
-
+- src-tauri/src/ffmpeg.rs - FFmpeg wrapper functions
+- src/hooks/useFFmpeg.ts - React hook for FFmpeg operations
+- src/types/media.ts - TypeScript type definitions

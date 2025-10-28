@@ -1,10 +1,10 @@
 # ClipForge - Desktop Video Editor
 
-A lightweight Windows desktop video editor built with Tauri v1 + React + Konva.js + FFmpeg.
+A lightweight Windows desktop video editor built with Tauri v2 + React + Konva.js + FFmpeg.
 
 ## Project Status
 
-**Current PR**: PR #1 - Tauri App Shell & Frontend Bridge (IN PROGRESS)
+**Current PR**: PR #2 - FFmpeg Sidecar Integration (COMPLETE)
 
 ## MVP Goal
 
@@ -13,7 +13,7 @@ Implement the complete workflow: **Import → Preview → Trim → Export**
 ## Technology Stack
 
 - **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS + Konva.js
-- **Backend**: Tauri v1 (Rust) + FFmpeg
+- **Backend**: Tauri v2 (Rust) + FFmpeg
 - **Platform**: Windows x64
 - **Output**: Native `.exe` via Tauri bundler
 
@@ -50,11 +50,15 @@ ClipForge/
 ├── src/                       # Frontend React app
 │   ├── components/           # React components
 │   ├── context/              # React context providers
+│   ├── hooks/                # React hooks
+│   ├── types/                # TypeScript definitions
 │   ├── utils/                # Utility functions
 │   └── main.tsx              # App entry point
 ├── src-tauri/                # Rust backend (Tauri)
+│   ├── bin/                  # FFmpeg binaries (ffmpeg.exe, ffprobe.exe)
 │   ├── src/
-│   │   └── main.rs          # Tauri entry point
+│   │   ├── lib.rs           # Tauri entry point
+│   │   └── ffmpeg.rs        # FFmpeg wrapper functions
 │   └── Cargo.toml           # Rust dependencies
 ├── public/                    # Static assets
 └── tauri.conf.json           # Tauri configuration
@@ -72,7 +76,15 @@ See `docs/architecture/ClipForge-MVP-Tasks.md` for detailed task breakdown.
 - [x] Implement Tauri → React IPC using commands and events
 - [x] Set up error boundary and logging to Rust console
 
-### Next: PR #2 - FFmpeg Sidecar Integration
+### PR #2: FFmpeg Sidecar Integration ✅
+- [x] Bundle native FFmpeg and FFprobe binaries as sidecars
+- [x] Verify process execution via `tauri::api::process::Command`
+- [x] Implement basic command wrapper in Rust (execute_ffmpeg, probe_metadata)
+- [x] Add error handling with anyhow
+- [x] Create frontend hook (useFFmpeg) for metadata probing
+- [x] Add type definitions for media structures
+
+### Next: PR #3 - File Import System
 
 ## Architecture
 
@@ -87,4 +99,3 @@ See `docs/architecture/ClipForge-Architecture.mermaid` for system architecture d
 ## License
 
 Proprietary - ClipForge Development Team
-
