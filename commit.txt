@@ -1,18 +1,18 @@
-feat(timeline): complete PR #7 trim UI; add fit-to-duration zoom and playhead snap
+feat(export, ui): complete PR #8; replace menu Export with Delete; robust deletion
 
-- Implemented PR #7 (Trim Handles):
-  - Left/right handles with snapping (whole seconds, playhead; Alt disables)
-  - Dragging inside selection moves window; keyboard precision (0.05s, Shift=0.5s)
-  - Loop trim toggle; playback pauses at out when loop is off
-  - Persist per-clip trim in project state; mirrored via TimelineContext
-- UX improvements:
-  - Dynamic minimum zoom so full video fits at max zoom-out
-  - After setting gates, playhead snaps to in-point if outside
-- Stability fixes:
-  - Moved selection init into useEffect; fixed provider ordering errors
-  - Removed noisy MediaLibrary selection logs
+- Backend (Rust/Tauri):
+  - Added `export_video` command calling new `export_trim` (FFmpeg with `-progress pipe:1`)
+  - Emits `export:start|progress|success` events; fixed `emit_all` by importing `tauri::Manager`
+  - Implemented `open_export_dialog` save dialog
+- Frontend:
+  - Added `useExport` hook to invoke export and listen to progress
+  - MediaLibrary: Export Trim button with percent status and error display
+  - MenuBar: Replaced Export with Delete; dispatches `request-delete`
+  - MediaLibrary: Handles `request-delete` with confirmation, DB deletion, reload, next selection
+  - Persist last selected clip via ref so delete works even if UI transiently deselects
+- Timeline enhancements (follow-up): dynamic min zoom fits full duration; snap playhead to in after gating
+- Logging: Added targeted logs for delete flow, reduced noisy selection logs
 
-Docs (memory-bank):
-- Updated activeContext and progress to reflect PR #7 completion and new timeline rules
-- Added systemPatterns timeline interaction rules
-
+docs(memory-bank):
+- Marked PR #8 complete; updated activeContext/progress with export and delete behaviors
+- Documented export pipeline (args, events) and menu delete pattern; noted last-selected fallback

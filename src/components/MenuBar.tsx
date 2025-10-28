@@ -7,7 +7,7 @@ import { useTauriContext } from "../context/TauriContext";
  * Displays Import, Export, and Help menu options at the top of the window
  */
 const MenuBar: React.FC = () => {
-  const { showImportDialog, showExportDialog, showHelpDialog } = useTauriContext();
+  const { showImportDialog, showHelpDialog } = useTauriContext();
 
   /**
    * Handle import button click
@@ -18,11 +18,17 @@ const MenuBar: React.FC = () => {
   };
 
   /**
-   * Handle export button click
-   * Calls the Tauri context function which will be implemented in PR #8
+   * Handle delete button click
+   * Dispatches a delete request event to be handled by the media library
    */
-  const handleExport = async () => {
-    await showExportDialog();
+  const handleDelete = async () => {
+    try {
+      console.log("[MenuBar] Delete clicked - dispatching request-delete event");
+      const ev = new CustomEvent("request-delete");
+      window.dispatchEvent(ev);
+    } catch (e) {
+      console.error("Delete trigger error:", e);
+    }
   };
 
   /**
@@ -43,10 +49,10 @@ const MenuBar: React.FC = () => {
           Import
         </button>
         <button
-          onClick={handleExport}
-          className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-black rounded-md transition-colors font-medium"
+          onClick={handleDelete}
+          className="px-3 py-2 bg-red-200 hover:bg-red-300 text-black rounded-md transition-colors font-medium"
         >
-          Export
+          Delete
         </button>
       </div>
       <div className="flex items-center gap-2">

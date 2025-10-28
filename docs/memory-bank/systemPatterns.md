@@ -179,6 +179,19 @@ App.tsx
 - **Playback**: If loop is off, playback pauses at out; if loop is on, playback jumps to in and continues.
 - **Gating**: After setting gates, if the playhead lies outside [in, out], it snaps to the in-point.
 
+## Export Pipeline
+- **Source**: Export from the original file path for quality; preview used only for playback.
+- **FFmpeg Args (default)**: `-ss <in>` + `-t <len>` + `-c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -c:a aac -b:a 160k -movflags +faststart`.
+- **Progress**: Use `-progress pipe:1 -nostats -v error`; backend emits events:
+  - `export:start` `{ outputPath }`
+  - `export:progress` `{ percent, timeMs }`
+  - `export:success` `{ outputPath }`
+- **Cancellation**: Planned; will require storing and killing child process.
+
+## Menu and Events
+- **Delete**: Menu bar Delete dispatches `request-delete`; media library handles it with confirmation, DB delete, reload, and selects the next item.
+- **Last Selected**: Keep a `lastSelectedRef`; when delete triggers deselection, use last non-null selection to proceed.
+
 ## Dependency Chain
 ```
 Frontend Dependencies: React → Tauri API → IPC → Tauri Backend

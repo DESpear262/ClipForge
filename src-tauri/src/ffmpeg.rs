@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
+use tokio::{io::{AsyncBufReadExt, BufReader}, process::Command};
 
 /**
  * Video metadata structure returned by FFprobe
@@ -167,7 +168,7 @@ pub async fn execute_ffmpeg(
     }
 
     // Build FFmpeg command
-    let mut command = tokio::process::Command::new(&ffmpeg_path);
+    let mut command = Command::new(&ffmpeg_path);
 
     // Set up progress reporting
     command.args(&args);
@@ -201,7 +202,7 @@ pub async fn generate_preview_vp8(
     }
 
     // ffmpeg -i input -c:v libvpx -b:v 1.5M -vf scale=1280:-1 -c:a libvorbis -b:a 96k -y output.webm
-    let output = tokio::process::Command::new(&ffmpeg_path)
+    let output = Command::new(&ffmpeg_path)
         .arg("-i").arg(input_path)
         .arg("-c:v").arg("libvpx")
         .arg("-b:v").arg("1500k")
@@ -262,7 +263,7 @@ pub async fn generate_thumbnail(
         anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
     }
 
-    let output = tokio::process::Command::new(&ffmpeg_path)
+    let output = Command::new(&ffmpeg_path)
         .arg("-ss").arg(format!("{}", timestamp_sec))
         .arg("-i").arg(input_path)
         .arg("-vframes").arg("1")
@@ -297,7 +298,7 @@ pub async fn generate_preview_webm(
     }
 
     // ffmpeg -i input -c:v libvpx-vp9 -b:v 2M -deadline good -row-mt 1 -c:a libopus -b:a 96k -speed 4 -vf scale=1280:-1 -y output.webm
-    let output = tokio::process::Command::new(&ffmpeg_path)
+    let output = Command::new(&ffmpeg_path)
         .arg("-i").arg(input_path)
         .arg("-c:v").arg("libvpx-vp9")
         .arg("-b:v").arg("2000k")
@@ -318,6 +319,91 @@ pub async fn generate_preview_webm(
         anyhow::bail!("ffmpeg preview failed: {}", stderr);
     }
 
+    Ok(())
+}
+
+/// Export a trimmed segment to MP4 with progress events
+pub async fn export_trim(
+    app: &AppHandle,
+    input_path: &str,
+    output_path: &str,
+    start_sec: f64,
+    end_sec: f64,
+    fast_copy: bool,
+) -> Result<()> {
+    let ffmpeg_path = app
+        .path_resolver()
+        .resolve_resource("bin/ffmpeg.exe")
+        .context("Failed to resolve ffmpeg path")?;
+
+    if !ffmpeg_path.exists() {
+        anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
+    }
+
+    let length = if end_sec > start_sec { end_sec - start_sec } else { 0.0 };
+    let total_ms = (length * 1000.0).max(1.0);
+
+    let mut args: Vec<String> = vec![
+        "-ss".into(), format!("{:.3}", start_sec.max(0.0)),
+        "-i".into(), input_path.into(),
+        "-t".into(), format!("{:.3}", length.max(0.0)),
+    ];
+
+    if fast_copy {
+        args.extend_from_slice(&["-c".into(), "copy".into()]);
+    } else {
+        args.extend_from_slice(&[
+            "-c:v".into(), "libx264".into(),
+            "-preset".into(), "veryfast".into(),
+            "-crf".into(), "21".into(),
+            "-pix_fmt".into(), "yuv420p".into(),
+            "-c:a".into(), "aac".into(),
+            "-b:a".into(), "160k".into(),
+            "-movflags".into(), "+faststart".into(),
+        ]);
+    }
+
+    // Structured progress
+    args.extend_from_slice(&[
+        "-progress".into(), "pipe:1".into(),
+        "-nostats".into(), "-v".into(), "error".into(),
+        "-y".into(), output_path.into(),
+    ]);
+
+    println!("[export_trim] ffmpeg args: {:?}", args);
+
+    let mut child = Command::new(&ffmpeg_path)
+        .args(&args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .context("Failed to spawn ffmpeg export")?;
+
+    let stdout = child.stdout.take().context("Missing stdout pipe")?;
+    let mut reader = BufReader::new(stdout).lines();
+
+    app.emit_all("export:start", serde_json::json!({ "outputPath": output_path }))
+        .ok();
+
+    while let Some(line) = reader.next_line().await? {
+        if let Some((k, v)) = line.split_once('=') {
+            if k == "out_time_ms" {
+                if let Ok(ms) = v.trim().parse::<f64>() {
+                    let pct = ((ms / total_ms) * 100.0).min(100.0).max(0.0);
+                    app.emit_all("export:progress", serde_json::json!({ "percent": pct, "timeMs": ms }))
+                        .ok();
+                }
+            }
+        }
+    }
+
+    let status = child.wait().await?;
+    if !status.success() {
+        anyhow::bail!("ffmpeg export failed with status: {}", status);
+    }
+
+    app.emit_all("export:success", serde_json::json!({ "outputPath": output_path }))
+        .ok();
     Ok(())
 }
 

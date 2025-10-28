@@ -1,7 +1,7 @@
 # Active Context: ClipForge
 
 ## Current Work Focus
-**Primary Task**: Export workflow. Import/preview, Konva timeline (PR #6), and trim handles (PR #7) are complete. The project is standardized on Tauri v1.
+**Primary Task**: Packaging & QA. Import/preview, Konva timeline (PR #6), trim handles (PR #7), and export pipeline (PR #8) are complete. The project is standardized on Tauri v1.
 
 ## Recent Changes
 - ✅ Aligned documentation to Tauri v1 (removed v2 references)
@@ -13,9 +13,14 @@
 - ✅ Dynamic min zoom so full clip fits at minimum zoom
 - ✅ After setting gates, playhead snaps to in-point if outside
 - ✅ Fixed provider-order/hook usage and removed noisy logs
+- ✅ Implemented PR #8: export pipeline with progress events using FFmpeg (`-progress pipe:1`)
+- ✅ Frontend export UI (button in preview panel) with progress percent and error display
+- ✅ Menu bar: replaced Export with Delete button; dispatches `request-delete` custom event
+- ✅ Media library: delete handler with confirmation, reload, next-item selection, and last-selected fallback to handle transient deselection
+- ✅ Rust fix: import `tauri::Manager` to enable `emit_all` on `AppHandle`
 
 ## Active Development
-**PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅, PR #6 (Konva Timeline) ✅, PR #7 (Trim Handles) ✅
+**PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅, PR #6 (Konva Timeline) ✅, PR #7 (Trim Handles) ✅, PR #8 (Export Pipeline) ✅
 
 ### What Works
 - Tauri application launches successfully (v1)
@@ -42,11 +47,13 @@
 - **useFFmpeg** invokes `probe_video_metadata` to read metadata
 - **VideoPlayer** uses Blob URLs for `.webm` previews, exposes `onReady` control API
 - **CSP** allows `asset:` and `blob:` media sources
+- **Export** uses original source path with accurate re-encode defaults (H.264/AAC); emits `export:start|progress|success`
+- **Menu/Delete** uses `request-delete` event and last-selected clip fallback to avoid deselection race
 
 ### Next Immediate Steps
-1. Implement FFmpeg export with `-ss`/`-to`, progress events (PR #8)
-2. Continue Memory Bank maintenance
-3. Optional: thumbnails via blob to avoid asset errors in dev
+1. Build & package for Windows (PR #9), validate sidecar paths
+2. QA test pass, performance checks, and docs (PR #10)
+3. Continue Memory Bank maintenance
 
 ## Active Decisions
 

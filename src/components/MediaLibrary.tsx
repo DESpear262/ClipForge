@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef as useReactRef } from "react";
+import { useExport } from "../hooks/useExport";
 import { importVideo, getMediaLibrary, deleteMediaItem, type MediaDto, ensurePreview } from "../utils/api";
 import { convertFileSrc } from "@tauri-apps/api/tauri";
 import VideoPlayer from "./VideoPlayer";
@@ -10,6 +11,7 @@ const MediaLibrary: React.FC = () => {
   const [media, setMedia] = useState<MediaDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<MediaDto | null>(null);
+  const lastSelectedRef = useReactRef<MediaDto | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -26,8 +28,46 @@ const MediaLibrary: React.FC = () => {
     load();
     const onImported = () => { load(); };
     window.addEventListener("media-imported", onImported as EventListener);
-    return () => window.removeEventListener("media-imported", onImported as EventListener);
+    const onRequestDelete = async () => {
+      console.log("[MediaLibrary] request-delete received");
+      try {
+        const current = selected || lastSelectedRef.current;
+        console.log("[MediaLibrary] current selected (fallback to last):", current);
+        if (!current) {
+          console.warn("[MediaLibrary] No selection to delete");
+          return;
+        }
+        const confirmed = confirm("Delete selected video from library? This does not remove the original file.");
+        if (!confirmed) return;
+        console.log("[MediaLibrary] Deleting id=", current.id);
+        await deleteMediaItem(Number(current.id));
+        console.log("[MediaLibrary] Deleted. Reloading library...");
+        await load();
+        // Select the first available item after deletion
+        const list = await getMediaLibrary();
+        console.log("[MediaLibrary] Library size after delete:", list.length);
+        setSelected(list[0] ?? null);
+      } catch (e) {
+        console.error("Delete failed:", e);
+      }
+    };
+    window.addEventListener("request-delete", onRequestDelete as EventListener);
+    console.log("[MediaLibrary] request-delete listener added");
+    return () => {
+      window.removeEventListener("media-imported", onImported as EventListener);
+      window.removeEventListener("request-delete", onRequestDelete as EventListener);
+      console.log("[MediaLibrary] request-delete listener removed");
+    };
   }, []);
+
+  // Prefer a direct ref sync without interval when selection changes
+  useEffect(() => {
+    // This effect exists to provide simple debug visibility
+    console.log("[MediaLibrary] selection changed:", selected?.id);
+    if (selected) {
+      lastSelectedRef.current = selected;
+    }
+  }, [selected?.id]);
 
   // If a selected item lacks a preview, generate it once and reload
   useEffect(() => {
@@ -59,6 +99,7 @@ const MediaLibrary: React.FC = () => {
 
   const RightPanel: React.FC = () => {
     const timeline = useTimeline();
+    const { exportTrim, isExporting, progress, error } = useExport();
     const playerApiRef = useReactRef<{
       seek: (t: number) => void;
       play: () => void;
@@ -116,6 +157,25 @@ const MediaLibrary: React.FC = () => {
                 }}
               />
             </div>
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-300">
+                In: {Math.max(0, timeline.state.inPoint || 0).toFixed(2)}s → Out: {Math.max(0, timeline.state.outPoint || 0).toFixed(2)}s
+              </div>
+              <button
+                disabled={!selected || isExporting || (timeline.state.outPoint || 0) <= (timeline.state.inPoint || 0)}
+                onClick={async () => {
+                  if (!selected) return;
+                  const src = selected.path; // export from original source
+                  const i = timeline.state.inPoint || 0;
+                  const o = timeline.state.outPoint || timeline.state.duration || 0;
+                  await exportTrim(src, i, o);
+                }}
+                className={`px-3 py-2 rounded-md text-black font-medium ${isExporting ? "bg-gray-400" : "bg-gray-200 hover:bg-gray-300"}`}
+              >
+                {isExporting ? `Exporting… ${progress?.percent?.toFixed(0) ?? 0}%` : "Export Trim"}
+              </button>
+            </div>
+            {error && <div className="text-xs text-red-400">Export error: {error}</div>}
             <Timeline />
             <div className="text-sm text-gray-300">
               <div>Resolution: {selected.width ?? "?"}×{selected.height ?? "?"} • Codec: {selected.codec ?? "?"}</div>

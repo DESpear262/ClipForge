@@ -4,7 +4,7 @@
 mod ffmpeg;
 mod db;
 
-use ffmpeg::probe_metadata;
+use ffmpeg::{probe_metadata, export_trim};
 use tauri::Manager;
 use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
@@ -32,7 +32,8 @@ pub fn run() {
       import_video,
       get_media_library,
       delete_media_item,
-      ensure_preview
+      ensure_preview,
+      export_video
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
@@ -69,8 +70,22 @@ async fn open_import_dialog(_app: tauri::AppHandle) -> Result<String, String> {
 #[tauri::command]
 async fn open_export_dialog(_app: tauri::AppHandle) -> Result<String, String> {
   println!("Export dialog requested");
-  // Placeholder - will be implemented in PR #8
-  Ok("Export dialog not yet implemented".to_string())
+  let (tx, rx) = std::sync::mpsc::channel();
+  FileDialogBuilder::new()
+    .set_title("Save Exported Clip")
+    .add_filter("MP4 Video", &["mp4"])
+    .set_file_name("clip.mp4")
+    .save_file(move |path_opt| {
+      let _ = tx.send(path_opt.map(|p| p));
+    });
+  match rx.recv() {
+    Ok(Some(path)) => {
+      let path_str = path.to_string_lossy().to_string();
+      Ok(path_str)
+    }
+    Ok(None) => Ok(String::new()),
+    Err(e) => Err(format!("Failed to get dialog result: {}", e)),
+  }
 }
 
 /**
@@ -305,4 +320,23 @@ async fn ensure_preview(
   db::update_preview_path(&conn, &video_path, &preview_str)
     .map_err(|e| format!("DB error: {}", e))?;
   Ok(preview_str)
+}
+
+/// Export a trimmed clip to MP4 with progress events
+#[tauri::command]
+async fn export_video(
+  app: tauri::AppHandle,
+  input_path: String,
+  output_path: String,
+  start_sec: f64,
+  end_sec: f64,
+  fast_copy: Option<bool>,
+) -> Result<(), String> {
+  if input_path.is_empty() || output_path.is_empty() {
+    return Err("Invalid input or output path".into());
+  }
+  let fc = fast_copy.unwrap_or(false);
+  export_trim(&app, &input_path, &output_path, start_sec, end_sec, fc)
+    .await
+    .map_err(|e| format!("Export failed: {}", e))
 }

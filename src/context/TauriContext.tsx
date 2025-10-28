@@ -75,10 +75,13 @@ export const TauriProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   },
         showExportDialog: async () => {
+          // Export handled in MediaLibrary with timeline state; this stub remains for menu action.
+          // Optionally, we could dispatch a DOM event to trigger the export UI.
           try {
-            await invoke("open_export_dialog");
+            const ev = new CustomEvent("request-export");
+            window.dispatchEvent(ev);
           } catch (error) {
-            console.error("Export dialog error:", error);
+            console.error("Export trigger error:", error);
           }
         },
         showHelpDialog: () => {

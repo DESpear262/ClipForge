@@ -1,8 +1,8 @@
 # Progress: ClipForge
 
-## Current Status: MVP in Progress (Import/Preview/Timeline/Trim complete)
+## Current Status: MVP in Progress (Import/Preview/Timeline/Trim/Export complete)
 
-### Overall Completion: ~60%
+### Overall Completion: ~75%
 
 **Status**: Foundation complete, media pipeline in progress
 
@@ -19,6 +19,7 @@
  - ✅ Konva timeline (grid, clip, playhead, zoom, bi-directional seek) (PR #6)
  - ✅ Trim handles with snapping, selection drag, keyboard precision, loop toggle (PR #7)
  - ✅ Dynamic min zoom to fit full video; snap playhead to in after gating
+ - ✅ Export pipeline with progress events; frontend export button and status (PR #8)
 
 ### Infrastructure
 - ✅ Tauri + React + Vite project initialized
@@ -31,7 +32,7 @@
 ## What's Left to Build 🔨
 
 ### Immediate Next Steps
-- [ ] Implement FFmpeg export (PR #8)
+- [ ] Packaging & QA (PR #9/#10)
 
 ### Media Import Pipeline (BLOCK B)
 - [ ] Drag-and-drop path extraction (enhancement)
@@ -47,9 +48,9 @@
   - Drag-based trim handles on timeline
   - In/out point setting and snapping
   - State persistence and loop/pause behavior
-- [ ] **PR #8**: FFmpeg Export Pipeline
+- [x] **PR #8**: FFmpeg Export Pipeline
   - Export command with trim parameters
-  - Progress bar
+  - Progress bar and events
   - Save dialog
   - Error handling
 
@@ -82,8 +83,8 @@
 - [x] Metadata display
 - [x] Video preview player (asset URL + Blob fallback)
 - [x] Timeline (grid, playhead, zoom; single-clip)
-- [ ] Export to MP4
-- [ ] Progress feedback
+- [x] Export to MP4
+- [x] Progress feedback
 
 ### Post-MVP Features (Future)
 - [ ] Screen recording
