@@ -1,24 +1,20 @@
 # Progress: ClipForge
 
-## Current Status: Early Development (MVP)
+## Current Status: MVP in Progress (Import/Preview complete)
 
-### Overall Completion: ~15%
+### Overall Completion: ~35%
 
 **Status**: Foundation complete, media pipeline in progress
 
 ## What Works ✅
 
-### Completed (PR #1)
-- ✅ Tauri app shell launches successfully on Windows
-- ✅ React frontend renders in WebView2
-- ✅ MenuBar component with Import/Export/Help actions
-- ✅ Error boundary catches and handles React errors
-- ✅ Tauri context provides app-wide function access
-- ✅ IPC bridge between React and Rust established
-- ✅ Three stub commands: `test_ipc()`, `open_import_dialog()`, `open_export_dialog()`
-- ✅ Secure allowlist configuration in place
-- ✅ Project structure and build system configured
-- ✅ Developer documentation (PRD, MVP tasks) complete
+### Completed
+- ✅ App shell and IPC bridge (PR #1)
+- ✅ FFprobe metadata extraction (PR #2)
+- ✅ File import via native dialog with format validation (PR #3)
+- ✅ Metadata display wiring via context (PR #4)
+- ✅ HTML5 video preview with asset URL via `convertFileSrc()` (PR #5)
+- ✅ Blob fallback path implemented for dev environments where `asset.localhost` is unavailable
 
 ### Infrastructure
 - ✅ Tauri + React + Vite project initialized
@@ -31,26 +27,13 @@
 ## What's Left to Build 🔨
 
 ### Immediate Next Steps
-- [ ] **PR #2**: FFmpeg Sidecar Integration
-  - Bundle FFmpeg and FFprobe binaries
-  - Create Rust wrappers for FFmpeg execution
-  - Implement progress event emission
-  - Test FFmpeg accessibility through Tauri
+- [ ] Implement Konva timeline and playhead sync (PR #6)
+- [ ] Implement trim UI/state and FFmpeg export (PR #7/8)
 
 ### Media Import Pipeline (BLOCK B)
-- [ ] **PR #3**: File Import System
-  - Drag-and-drop functionality
-  - File picker integration
-  - Format validation (.mp4, .mov, .webm)
-- [ ] **PR #4**: Metadata Extraction
-  - Use FFprobe to get duration, resolution, bitrate
-  - Display metadata in UI
+- [ ] Drag-and-drop path extraction (enhancement)
 
 ### Preview & Timeline (BLOCK C)
-- [ ] **PR #5**: HTML5 Video Preview
-  - Video player component
-  - Play/pause/seek controls
-  - Current time display
 - [ ] **PR #6**: Konva Timeline Editor
   - Timeline canvas with grid
   - Clip visualization
@@ -81,7 +64,7 @@
 ## Known Issues 🐛
 
 ### Current
-- None identified yet
+- In dev, `asset.localhost` GET/HEAD may be refused by WebView2. The player falls back to Blob and playback proceeds. Console shows benign GET/HEAD failures. Consider preflight-and-gate to keep console clean.
 
 ### Anticipated (Based on Architecture)
 - FFmpeg path resolution in production builds
@@ -93,9 +76,9 @@
 
 ### MVP Features (v0.1.0)
 - [x] App shell and IPC bridge
-- [ ] Video import (drag-drop or file picker)
-- [ ] Metadata display
-- [ ] Video preview player
+- [x] Video import (file picker)
+- [x] Metadata display
+- [x] Video preview player (asset URL + Blob fallback)
 - [ ] Timeline with trim handles
 - [ ] Export to MP4
 - [ ] Progress feedback
@@ -139,8 +122,9 @@
 - ✅ App launches without errors
 - ✅ Menu bar responsive
 - ✅ Error boundary catches React errors
-- [ ] Import functionality (not implemented)
-- [ ] Preview playback (not implemented)
+- ✅ Import via dialog works (mp4/mov/webm)
+- ✅ Metadata probe returns expected values
+- ✅ Video playback via asset URL; Blob fallback works when asset host is unavailable in dev
 - [ ] Timeline interaction (not implemented)
 - [ ] Export process (not implemented)
 
@@ -168,9 +152,9 @@
 
 ## Next Milestone
 
-**Target**: Complete PR #2 (FFmpeg Integration)
-**Timeline**: Next development session
-**Blocking**: All media pipeline features (BLOCK B, C, D)
+**Target**: Implement timeline (PR #6) and trimming/export (PR #7/8)
+**Timeline**: Next development sessions
+**Blocking**: Packaging/QA (BLOCK E)
 
 ## Summary
 

@@ -3,7 +3,7 @@
 ## Technology Stack
 
 ### Frontend
-- **Framework**: React 18 with TypeScript
+- **Framework**: React 19 with TypeScript
 - **Build Tool**: Vite
 - **Styling**: Tailwind CSS
 - **Canvas Library**: Konva.js (for timeline)
@@ -11,10 +11,10 @@
 - **State Management**: React Context + Hooks
 
 ### Backend
-- **Framework**: Tauri v1 (Rust)
+- **Framework**: Tauri v2 (Rust)
 - **IPC**: Tauri Commands & Events
 - **Media Processing**: FFmpeg + FFprobe (native sidecars)
-- **File Handling**: Tauri FS & Dialog APIs
+- **File Handling**: Tauri FS & Dialog APIs (`@tauri-apps/plugin-fs`)
 
 ### Platform
 - **OS**: Windows 10/11
@@ -62,7 +62,7 @@ ClipForge/
 ## Dependencies
 
 ### Frontend (package.json)
-- React 18
+- React 19
 - TypeScript
 - Vite
 - Tailwind CSS
@@ -70,7 +70,9 @@ ClipForge/
 - Konva.js (to be added)
 
 ### Backend (Cargo.toml)
-- tauri (v1)
+- tauri (v2)
+- tauri-plugin-fs (v2)
+- tauri-plugin-dialog (v2)
 - serde / serde_json
 - tokio (async runtime)
 - anyhow (error handling)
@@ -81,7 +83,7 @@ ClipForge/
 - **Windows Development**: Must use Windows for development (MSVC requirement)
 - **FFmpeg**: Must bundle native binaries as sidecars
 - **WebView2**: Requires system WebView2 runtime
-- **Tauri v1**: Using stable v1 APIs, not v2
+- **Tauri v2**: Using v2 APIs and capabilities
 
 ### Runtime
 - **Offline Operation**: No internet required for MVP
@@ -119,7 +121,7 @@ npm run tauri build
 
 ### tauri.conf.json
 - Window configuration
-- Allowlist permissions
+- Capabilities and CSP (`media-src` must include `asset:` and `blob:`)
 - Sidecar definitions (FFmpeg)
 - Bundle settings
 
@@ -138,7 +140,7 @@ npm run tauri build
 - ✅ Tauri app shell (PR #1 complete)
 - ✅ Frontend bridge established
 - ✅ Basic UI components (MenuBar, MainView)
-- 🔄 FFmpeg integration (PR #2 - next)
+- ✅ FFprobe integration (PR #2)
 
 ### Next Steps
 1. Add FFmpeg sidecars and wrappers

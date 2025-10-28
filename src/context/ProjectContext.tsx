@@ -12,11 +12,21 @@ export interface ProjectClip {
 }
 
 /**
+ * Playback state for video player
+ */
+export interface PlaybackState {
+  currentTime: number;
+  duration: number;
+  isPlaying: boolean;
+}
+
+/**
  * Project state interface
  */
 interface ProjectState {
   clips: ProjectClip[];
   activeClipId: string | null;
+  playback: PlaybackState;
 }
 
 /**
@@ -28,6 +38,7 @@ interface ProjectContextType {
   setClipMetadata: (clipId: string, metadata: VideoMetadata) => void;
   setActiveClip: (clipId: string | null) => void;
   clearProject: () => void;
+  updatePlayback: (playback: Partial<PlaybackState>) => void;
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
@@ -54,6 +65,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({
   const [state, setState] = useState<ProjectState>({
     clips: [],
     activeClipId: null,
+    playback: {
+      currentTime: 0,
+      duration: 0,
+      isPlaying: false,
+    },
   });
 
   /**
@@ -107,18 +123,33 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   /**
+   * Update playback state
+   */
+  const updatePlayback = (playback: Partial<PlaybackState>) => {
+    setState((prev) => ({
+      ...prev,
+      playback: { ...prev.playback, ...playback },
+    }));
+  };
+
+  /**
    * Clear all clips from the project
    */
   const clearProject = () => {
     setState({
       clips: [],
       activeClipId: null,
+      playback: {
+        currentTime: 0,
+        duration: 0,
+        isPlaying: false,
+      },
     });
   };
 
   return (
     <ProjectContext.Provider
-      value={{ state, addClip, setClipMetadata, setActiveClip, clearProject }}
+      value={{ state, addClip, setClipMetadata, setActiveClip, clearProject, updatePlayback }}
     >
       {children}
     </ProjectContext.Provider>

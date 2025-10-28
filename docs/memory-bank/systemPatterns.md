@@ -34,9 +34,46 @@ React UI ←→ Tauri Commands ←→ Rust Backend
 - **Contexts**: TauriContext for app-wide actions, TimelineContext (planned)
 
 ### 4. File Path Resolution
-- **Pattern**: Use `convertFileSrc()` for WebView2 local file access
-- **Security**: All file access via user-initiated dialogs
-- **State**: Store clip metadata in React state and JSON
+- **Primary**: Use `convertFileSrc()` to expose local files via the asset protocol (Tauri v2).
+  - Produces URLs like `http://asset.localhost/C%3A%5Cpath%5Cto%5Cfile.mp4`.
+  - Allowed by CSP via `media-src ... asset:` (already configured).
+- **Fallback**: If the asset host is not reachable in dev (e.g., WebView2 returns `net::ERR_CONNECTION_REFUSED`), fall back to a Blob URL:
+  - Read bytes with `@tauri-apps/plugin-fs.readFile(path)` under capability `fs:read-all` with a permissive `fs:scope`.
+  - Construct a `Blob` with the correct MIME based on extension (mp4/webm/mov).
+  - Assign `video.src = blobUrl`.
+- **CSP**: `blob:` must be present in `media-src` (configured). This is required for the fallback path.
+- **State**: Store clip path/name + metadata in `ProjectContext`; the player derives the source from `clip.filePath` at render time.
+
+### Media Loading Flow (Implementation)
+1. Import returns `{ path, name }` from the Rust dialog command.
+2. `useImport` validates format, adds a `ProjectClip` to context, and probes metadata via `probe_video_metadata`.
+3. `VideoPlayer` logic:
+   - Build asset URL via `convertFileSrc(filePath)` and assign to `<video src>`.
+   - In dev, perform a HEAD to the asset URL for visibility; log status/headers. This HEAD is best-effort and non-blocking.
+   - If the `<video>` element emits `error`, log ready/network state and fall back to Blob by reading the file with plugin-fs, then set `src` to the Blob URL.
+   - Register rich media event listeners (e.g., `canplay`, `loadedmetadata`, `stalled`, `waiting`, `progress`) to log `readyState` and `networkState`.
+
+### Capabilities
+- Capability file `src-tauri/capabilities/fs-read.json`:
+  - Include `"fs:read-all"` to enable read commands.
+  - Add a permissive global scope using `fs:scope`:
+    ```json
+    {
+      "identifier": "fs-read",
+      "windows": ["main"],
+      "permissions": [
+        "core:default",
+        "fs:read-all",
+        { "identifier": "fs:scope", "allow": ["**", "C:\\**", "D:\\**", "C:/**", "D:/**"] }
+      ]
+    }
+    ```
+  - Note: Using `scope` inside `fs:allow-read-file` is not supported; use `fs:scope` instead.
+
+### Observed Dev-Mode Behavior
+- On some environments, WebView2 refuses `asset.localhost` in dev, causing `net::ERR_CONNECTION_REFUSED` on the asset GET/HEAD.
+- This is non-fatal: the player immediately falls back to Blob and playback works. Production builds typically do not exhibit this refusal.
+
 
 ### 5. Error Handling
 - **Pattern**: ErrorBoundary at root level, try-catch in commands

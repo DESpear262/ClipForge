@@ -1,30 +1,21 @@
-feat: implement metadata extraction with FFprobe integration
+feat: stabilize video loading (asset URL + Blob fallback), fix fs capabilities, add diagnostics
 
-PR #4 - Metadata Extraction (FFprobe)
+PR #5 - HTML5 Video Preview (stabilization)
 
-Complete video metadata extraction and display:
-- Enhanced VideoMetadata type with containerFormat and fps fields
-- Updated Rust ffmpeg.rs to extract additional metadata (format_name, r_frame_rate)
-- Added duration rounding to nearest 0.1s and fps parsing from fraction format
-- Created ClipCard component to display metadata in a compact card format
-- Added metadata formatting utilities (duration, file size, bitrate, resolution, fps)
-- Updated useImport to auto-probe metadata immediately after import
-- Modified ImportZone to show ClipCard instead of basic metadata display
-- Added retry functionality for failed metadata probes
-- Implemented user-friendly error handling with toast notifications
-- Fixed TypeScript verbatimModuleSyntax import errors (type-only imports)
-- Fixed button text colors for better readability (black text on buttons)
-
-Files created:
-- src/components/ClipCard.tsx - Metadata display component
-- src/utils/formatters.ts - Formatting utilities for display
+Key changes:
+- VideoPlayer now resolves sources via `convertFileSrc()` (asset protocol) and gracefully falls back to a Blob when `asset.localhost` is unavailable in dev.
+- Implemented MIME-aware Blob fallback using `@tauri-apps/plugin-fs.readFile` (mp4/webm/mov), with CSP support for `blob:` already configured.
+- Fixed plugin-fs capabilities: replaced invalid scoped entries with `fs:read-all` plus a global `fs:scope` allow list to permit reads from user-selected paths (e.g., `C:\**`).
+- Added extensive diagnostics in `VideoPlayer`: HEAD preflight logs for asset URL, media event listeners (canplay/loadedmetadata/stalled/waiting/etc.), and readyState/networkState dumps. This greatly improves troubleshooting.
 
 Files modified:
-- src/types/media.ts - Enhanced VideoMetadata interface
-- src-tauri/src/ffmpeg.rs - Enhanced probe_metadata with additional fields, fixed ownership error
-- src/hooks/useImport.ts - Auto-probe after import
-- src/components/ImportZone.tsx - Use ClipCard for metadata display
-- src/components/ErrorBoundary.tsx - Fixed type-only imports
-- src/hooks/useToast.ts - Removed unused import
+- src/components/VideoPlayer.tsx – Source resolution, Blob fallback, diagnostic logging, event-state tracing.
+- src-tauri/capabilities/fs-read.json – Proper `fs:read-all` + `fs:scope` configuration.
+- docs/memory-bank/* – Updated architecture docs: media loading flow, capabilities, dev-mode behavior, and current status.
 
-Metadata extracted: duration, resolution, codec, file size, bitrate, container format, fps
+Notes:
+- In some dev environments, WebView2 refuses `asset.localhost` (ERR_CONNECTION_REFUSED). This is benign: the player now falls back to Blob and playback continues.
+- Production builds typically serve asset URLs successfully.
+
+Next:
+- PR #6: Timeline (Konva) and playhead sync.

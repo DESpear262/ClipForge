@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import { useImport } from "../hooks/useImport";
 import { useProject } from "../context/ProjectContext";
 import ClipCard from "./ClipCard";
+import VideoPlayer from "./VideoPlayer";
 
 /**
  * Import zone component with drag-and-drop functionality
@@ -91,23 +92,34 @@ const ImportZone: React.FC = () => {
     }
   };
 
-  // If file already imported, show the clip card
+  // If file already imported, show the clip card and video player
   if (hasImportedFile) {
     const clip = state.clips[0]; // MVP: single clip
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-950 p-8">
-        <div className="w-full max-w-md">
+      <div className="flex-1 flex flex-col bg-gray-950 p-8 space-y-6">
+        <div className="w-full max-w-2xl mx-auto">
           <ClipCard 
             clip={clip} 
             onRetryProbe={() => {
               // This will be handled by ClipCard internally
             }}
           />
-          <div className="mt-4 text-center">
-            <p className="text-gray-400 text-sm">
-              Timeline and preview will appear here in PR #6
-            </p>
-          </div>
+        </div>
+        
+        <div className="w-full max-w-4xl mx-auto">
+          <VideoPlayer 
+            clip={clip}
+            onTimeUpdate={(_currentTime, _duration) => {
+              // Update playback state for future timeline sync
+              // This will be used in PR #6
+            }}
+          />
+        </div>
+        
+        <div className="text-center">
+          <p className="text-gray-400 text-sm">
+            Timeline will appear here in PR #6
+          </p>
         </div>
       </div>
     );

@@ -9,7 +9,7 @@ Deliver a fast, responsive, and stable desktop video editing experience that per
 ## Target Platform
 - **OS**: Windows (x64)
 - **Deployment**: Native `.exe` via Tauri bundler
-- **Framework**: Tauri v1 + React + Vite
+- **Framework**: Tauri v2 + React + Vite
 - **Media Processing**: FFmpeg (bundled as sidecar)
 
 ## MVP Scope

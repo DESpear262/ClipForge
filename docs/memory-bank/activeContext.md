@@ -1,7 +1,7 @@
 # Active Context: ClipForge
 
 ## Current Work Focus
-**Primary Task**: Initialize memory bank for project documentation and knowledge management
+**Primary Task**: Stabilize video import/preview pipeline on Tauri v2 using asset URLs via convertFileSrc()
 
 ## Recent Changes
 - ✅ Read and analyzed existing project documentation
@@ -10,33 +10,31 @@
 - ✅ Creating memory bank structure with core files
 
 ## Active Development
-**PR Status**: PR #1 (Tauri App Shell & Frontend Bridge) - **Complete** ✅
+**PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅
 
 ### What Works
-- Basic Tauri application launches successfully
+- Tauri application launches successfully (v2)
 - React frontend renders in WebView2
-- MenuBar component with Import/Export/Help buttons (stub implementations)
+- Import via native file dialog; supported formats validated (mp4/mov/webm)
+- FFprobe metadata extraction via Rust sidecar wrappers
+- HTML5 video preview using asset URLs via `convertFileSrc()`
+- Blob fallback path when asset host is unavailable in dev
+- CSP allows `asset:` and `blob:` media sources
 - Error boundary catches React errors gracefully
-- TauriContext provides app-wide function access
-- IPC commands: `test_ipc()`, `open_import_dialog()`, `open_export_dialog()`
+- IPC bridge and context wiring
 
 ### Current State
-- **App.tsx**: Root component with ErrorBoundary and TauriProvider
-- **main.rs**: Basic Tauri setup with three command stubs
-- **TauriContext.tsx**: Context provider for app-wide actions (stub implementations)
-- **MenuBar.tsx**: Top menu bar (implemented)
-- **MainView.tsx**: Main content area (placeholder)
+- **ProjectContext** stores clips and playback state
+- **useImport** invokes `open_file_dialog`, validates format, adds clip, triggers probe
+- **useFFmpeg** invokes `probe_video_metadata` to read metadata
+- **VideoPlayer** uses asset URLs with time/seek controls, rich diagnostics, and Blob fallback
+- **CSP** allows `asset:` and `blob:` media sources
 
 ### Next Immediate Steps
-1. **PR #2**: Implement FFmpeg Sidecar Integration
-   - Bundle FFmpeg and FFprobe as sidecars
-   - Create Rust wrapper functions
-   - Add FFmpeg command execution
-   - Set up progress event emission
-
-2. **Memory Bank Maintenance**
-   - Monitor and update memory bank as development progresses
-   - Ensure documentation stays synchronized with code changes
+1. Implement timeline (Konva) and sync playhead
+2. Implement trim UI/state and export pipeline with FFmpeg
+3. Continue Memory Bank maintenance
+4. Optional: preflight-and-gate asset attempts in dev to prevent console noise
 
 ## Active Decisions
 
@@ -59,17 +57,15 @@
 - Types defined for better TypeScript safety
 
 ### Known Gaps
-- No actual file import functionality yet (stub only)
-- No video preview player implemented yet
-- No timeline component yet
-- No FFmpeg integration yet
-- No export functionality yet
+- Timeline component not implemented
+- Trim/export pipeline not implemented
 
 ### Upcoming Challenges
 - FFmpeg sidecar path resolution in production
 - Implementing Konva.js timeline efficiently
 - Handling large video files without lag
 - Progress feedback during FFmpeg operations
+ - Keeping dev console noise low while still logging useful diagnostics
 
 ## Work in Progress
 - Initializing memory bank (this work)

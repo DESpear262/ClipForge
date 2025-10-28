@@ -1,0 +1,22 @@
+{
+  "$schema": "../../.tauri/schemas/desktop-schema.json",
+  "identifier": "fs-read",
+  "description": "Allow reading arbitrary files for video preview",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "fs:read-all"
+    ,
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        "**",
+        "C:\\**",
+        "D:\\**",
+        "C:/**",
+        "D:/**"
+      ]
+    }
+  ]
+}
+

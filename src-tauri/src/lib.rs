@@ -5,6 +5,9 @@ mod ffmpeg;
 
 use ffmpeg::probe_metadata;
 use tauri_plugin_dialog::DialogExt;
+use tauri::http::{Response, header::{CONTENT_TYPE, ACCEPT_RANGES, CONTENT_RANGE}};
+use urlencoding::decode;
+use std::{fs, path::PathBuf, fs::File, io::{Read, Seek, SeekFrom}};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,6 +15,111 @@ pub fn run() {
     .plugin(tauri_plugin_log::Builder::default().build())
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_shell::init())
+    .plugin(tauri_plugin_fs::init())
+    .register_uri_scheme_protocol("stream", |app, request| {
+      // stream://video?path=<encoded-absolute-path>
+      let uri = request.uri().to_string();
+      let path_param = uri.split_once("path=")
+        .and_then(|(_, p)| Some(p.to_string()))
+        .unwrap_or_default();
+
+      let decoded = decode(&path_param).unwrap_or_default().to_string();
+      let path = PathBuf::from(decoded);
+
+      // Determine MIME by extension
+      let content_type = match path.extension().and_then(|e| e.to_str()).unwrap_or("") {
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        "mov" => "video/quicktime",
+        _ => "application/octet-stream",
+      };
+
+      // Open file and get metadata
+      let mut file = match File::open(&path) {
+        Ok(f) => f,
+        Err(e) => {
+          let body = format!("Failed to open file: {}", e);
+          return Response::builder()
+            .status(404)
+            .body(body.as_bytes().to_vec())
+            .expect("failed to build error response");
+        }
+      };
+
+      let file_len = match file.metadata() {
+        Ok(m) => m.len(),
+        Err(e) => {
+          let body = format!("Failed to read file metadata: {}", e);
+          return Response::builder()
+            .status(500)
+            .body(body.as_bytes().to_vec())
+            .expect("failed to build error response");
+        }
+      };
+
+      // Parse Range header for partial content support
+      let range_header = request
+        .headers()
+        .get("Range")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+      if let Some(r) = range_header.strip_prefix("bytes=") {
+        let (start, end) = if let Some((s, e)) = r.split_once('-') {
+          let s: u64 = s.parse().unwrap_or(0);
+          let e: u64 = if e.is_empty() { file_len.saturating_sub(1) } else { e.parse().unwrap_or(file_len.saturating_sub(1)) };
+          (s, e.min(file_len.saturating_sub(1)))
+        } else {
+          (0, file_len.saturating_sub(1))
+        };
+
+        if start >= file_len {
+          // Invalid range
+          let body = format!("Requested range not satisfiable");
+          return Response::builder()
+            .status(416)
+            .header(CONTENT_RANGE, format!("bytes */{}", file_len))
+            .body(body.as_bytes().to_vec())
+            .expect("failed to build response");
+        }
+
+        let chunk_len = end.saturating_sub(start) + 1;
+        let mut buf = vec![0u8; chunk_len as usize];
+        let _ = file.seek(SeekFrom::Start(start));
+        if let Err(e) = file.read_exact(&mut buf) {
+          let body = format!("Failed to read range: {}", e);
+          return Response::builder()
+            .status(500)
+            .body(body.as_bytes().to_vec())
+            .expect("failed to build response");
+        }
+
+        return Response::builder()
+          .status(206)
+          .header(CONTENT_TYPE, content_type)
+          .header(ACCEPT_RANGES, "bytes")
+          .header(CONTENT_RANGE, format!("bytes {}-{}/{}", start, end, file_len))
+          .body(buf)
+          .expect("failed to build response");
+      }
+
+      // No Range header → serve full file
+      let mut buf = Vec::with_capacity(file_len as usize);
+      if let Err(e) = file.read_to_end(&mut buf) {
+        let body = format!("Failed to read file: {}", e);
+        return Response::builder()
+          .status(500)
+          .body(body.as_bytes().to_vec())
+          .expect("failed to build response");
+      }
+
+      Response::builder()
+        .status(200)
+        .header(CONTENT_TYPE, content_type)
+        .header(ACCEPT_RANGES, "bytes")
+        .body(buf)
+        .expect("failed to build response")
+    })
     .setup(|_app| {
       // Initialize logging to console
       println!("ClipForge v0.1.0-mvp starting...");
