@@ -10,17 +10,21 @@ import { formatDuration } from "../utils/formatters";
  * Provides play/pause, seek, and time display functionality
  *
  * Architecture notes:
- * - Uses Tauri v2 asset resolution via `convertFileSrc()` to safely expose
+ * - Uses Tauri v1 asset protocol via `convertFileSrc()` to safely expose
  *   local file paths to the WebView (served under the asset protocol).
- * - Falls back to a Blob URL via plugin-fs if the asset URL is not reachable
- *   in the current environment (e.g., dev server refusing asset.localhost).
+ * - Falls back to a Blob URL via `readBinaryFile()` if the asset URL is not
+ *   reachable in the current environment (e.g., dev refusing asset.localhost).
  */
 interface VideoPlayerProps {
   clip: ProjectClip;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
+  /**
+   * Provides an API to control the player (seek/play/pause) once ready
+   */
+  onReady?: (api: { seek: (t: number) => void; play: () => void; pause: () => void; getDuration: () => number }) => void;
 }
 
-const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate }) => {
+const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate, onReady }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -119,6 +123,22 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate }) => {
     setDuration(videoRef.current.duration);
     setIsLoading(false);
     setHasError(false);
+    // Expose control API when metadata is ready
+    if (onReady && videoRef.current) {
+      const vid = videoRef.current;
+      onReady({
+        seek: (t: number) => {
+          try {
+            const nt = Math.max(0, t);
+            console.log("[VideoPlayer] external seek ->", nt.toFixed(3));
+            vid.currentTime = nt;
+          } catch {}
+        },
+        play: () => { try { vid.play(); } catch {} },
+        pause: () => { try { vid.pause(); } catch {} },
+        getDuration: () => vid.duration || 0,
+      });
+    }
   };
 
   /**

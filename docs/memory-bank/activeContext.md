@@ -1,16 +1,17 @@
 # Active Context: ClipForge
 
 ## Current Work Focus
-**Primary Task**: Stabilize video import/preview pipeline. We migrated to Tauri v1 for stability and use WebM previews with Blob playback.
+**Primary Task**: Trimming & export workflow. Import/preview and the Konva timeline (PR #6) are complete. The project is standardized on Tauri v1.
 
 ## Recent Changes
-- ✅ Read and analyzed existing project documentation
-- ✅ Reviewing PRD, MVP tasks, and architecture diagrams
-- ✅ Examining current codebase state (App.tsx, main.rs, TauriContext.tsx)
-- ✅ Creating memory bank structure with core files
+- ✅ Aligned documentation to Tauri v1 (removed v2 references)
+- ✅ Implemented Konva Timeline (single-clip) with playhead sync and zoom
+- ✅ Added `TimelineContext` and integrated under `MediaLibrary`
+- ✅ Exposed `onReady` control API from `VideoPlayer` (seek/play/pause)
+- ✅ Fixed timeline format-time init bug and seek registration bug
 
 ## Active Development
-**PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅
+**PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅, PR #6 (Konva Timeline) ✅
 
 ### What Works
 - Tauri application launches successfully (v1)
@@ -22,19 +23,24 @@
 - CSP allows `asset:` and `blob:` media sources
 - Error boundary catches React errors gracefully
 - IPC bridge and context wiring
+ - Konva timeline renders grid/clip, playhead syncs with playback
+ - Bi-directional control: clicking/dragging timeline seeks the video
+ - Zoom slider adjusts px/second (10–1000)
 
 ### Current State
 - **ProjectContext** stores clips and playback state
+- **TimelineContext** provides `currentTime`, `duration`, `pxPerSecond`, and a `requestSeek` API
+- **Timeline** component renders grid/clip/playhead; interaction overlay captures seeks
 - **useImport** invokes `open_file_dialog`, validates format, adds clip, triggers probe
 - **useFFmpeg** invokes `probe_video_metadata` to read metadata
-- **VideoPlayer** uses Blob URLs for `.webm` previews, rich diagnostics, and removes external duplicate controls (native controls only)
+- **VideoPlayer** uses Blob URLs for `.webm` previews, exposes `onReady` control API
 - **CSP** allows `asset:` and `blob:` media sources
 
 ### Next Immediate Steps
-1. Implement timeline (Konva) and sync playhead
-2. Implement trim UI/state and export pipeline with FFmpeg
+1. Implement trim handles and in/out state (PR #7)
+2. Implement FFmpeg export with `-ss`/`-to`, progress events (PR #8)
 3. Continue Memory Bank maintenance
-4. Optional: serve thumbnails via blob to avoid asset errors in dev
+4. Optional: thumbnails via blob to avoid asset errors in dev
 
 ## Active Decisions
 
@@ -57,26 +63,24 @@
 - Types defined for better TypeScript safety
 
 ### Known Gaps
-- Timeline component not implemented
-- Trim/export pipeline not implemented
+- Trim handles not implemented
+- Export pipeline not implemented
 
 ### Upcoming Challenges
 - FFmpeg sidecar path resolution in production
-- Implementing Konva.js timeline efficiently
 - Handling large video files without lag
 - Progress feedback during FFmpeg operations
- - Keeping dev console noise low while still logging useful diagnostics
+- Keeping dev console noise low while still logging useful diagnostics
 
 ## Work in Progress
-- Initializing memory bank (this work)
-- Preparing for FFmpeg integration (next PR)
-- Setting up proper documentation structure
+- Preparing trim handle UI and wiring
+- Designing export command interface
+- Maintaining documentation
 
 ## Immediate Action Items
-1. Complete memory bank initialization
-2. Review current code structure for next PR
-3. Plan FFmpeg sidecar integration approach
-4. Prepare for file import system (PR #3)
+1. Build `TrimHandles` and state storage
+2. Define export command parameters and events
+3. Add progress UI to export dialog
 
 ## Notes
 - Project is in early stages with solid foundation

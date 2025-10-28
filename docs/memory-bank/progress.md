@@ -1,8 +1,8 @@
 # Progress: ClipForge
 
-## Current Status: MVP in Progress (Import/Preview complete)
+## Current Status: MVP in Progress (Import/Preview/Timeline complete)
 
-### Overall Completion: ~35%
+### Overall Completion: ~50%
 
 **Status**: Foundation complete, media pipeline in progress
 
@@ -16,6 +16,7 @@
 - ✅ Migration to Tauri v1 for stability
 - ✅ HTML5 video preview via WebM previews (Blob playback) (PR #5 stabilization)
 - ✅ Blob fallback path for legacy MP4s (last resort)
+ - ✅ Konva timeline (grid, clip, playhead, zoom, bi-directional seek) (PR #6)
 
 ### Infrastructure
 - ✅ Tauri + React + Vite project initialized
@@ -28,14 +29,13 @@
 ## What's Left to Build 🔨
 
 ### Immediate Next Steps
-- [ ] Implement Konva timeline and playhead sync (PR #6)
 - [ ] Implement trim UI/state and FFmpeg export (PR #7/8)
 
 ### Media Import Pipeline (BLOCK B)
 - [ ] Drag-and-drop path extraction (enhancement)
 
 ### Preview & Timeline (BLOCK C)
-- [ ] **PR #6**: Konva Timeline Editor
+- [x] **PR #6**: Konva Timeline Editor
   - Timeline canvas with grid
   - Clip visualization
   - Playhead tracking
@@ -80,7 +80,7 @@
 - [x] Video import (file picker)
 - [x] Metadata display
 - [x] Video preview player (asset URL + Blob fallback)
-- [ ] Timeline with trim handles
+- [x] Timeline (grid, playhead, zoom; single-clip)
 - [ ] Export to MP4
 - [ ] Progress feedback
 
@@ -103,8 +103,8 @@
 - Export performance: 1-minute clip in <15 seconds
 
 ### Current Measurements
-- Not yet measured (MVP in progress)
-- Will be validated in PR #10
+- Timeline interaction latency within target in dev (<50ms perceived)
+- Remaining metrics to be validated in PR #10
 
 ## Build Status
 
@@ -126,7 +126,7 @@
 - ✅ Import via dialog works (mp4/mov/webm)
 - ✅ Metadata probe returns expected values
 - ✅ Video playback via asset URL; Blob fallback works when asset host is unavailable in dev
-- [ ] Timeline interaction (not implemented)
+- ✅ Timeline interaction: click/drag seek works; playhead syncs during playback
 - [ ] Export process (not implemented)
 
 ### Automated Testing

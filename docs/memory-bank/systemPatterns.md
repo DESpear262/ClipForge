@@ -49,22 +49,22 @@ React UI ←→ Tauri Commands ←→ Rust Backend
    - For legacy `.mp4`: attempt asset URL, then Blob fallback as last resort.
    - Register media event listeners and log ready/network state.
 
-### Capabilities
-- Capability file `src-tauri/capabilities/fs-read.json`:
-  - Include `"fs:read-all"` to enable read commands.
-  - Add a permissive global scope using `fs:scope`:
-    ```json
-    {
-      "identifier": "fs-read",
-      "windows": ["main"],
-      "permissions": [
-        "core:default",
-        "fs:read-all",
-        { "identifier": "fs:scope", "allow": ["**", "C:\\**", "D:\\**", "C:/**", "D:/**"] }
-      ]
+### Allowlist (Tauri v1)
+- Configure permissions via `tauri.conf.json` under `tauri.allowlist`.
+- Example (v1) to allow reading files and asset protocol:
+  ```json
+  {
+    "tauri": {
+      "allowlist": {
+        "all": false,
+        "dialog": { "open": true, "save": true },
+        "fs": { "readFile": true, "scope": ["**"] },
+        "protocol": { "asset": true, "assetScope": ["**"] }
+      }
     }
-    ```
-  - Note: Using `scope` inside `fs:allow-read-file` is not supported; use `fs:scope` instead.
+  }
+  ```
+- Avoid v2 Capabilities JSON; this project is strictly Tauri v1.
 
 ### Observed Dev-Mode Behavior
 - On some environments, WebView2 refuses `asset.localhost` in dev, causing `net::ERR_CONNECTION_REFUSED` on the asset GET/HEAD.

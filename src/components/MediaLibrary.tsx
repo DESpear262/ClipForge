@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { importVideo, getMediaLibrary, deleteMediaItem, type MediaDto, ensurePreview } from "../utils/api";
 import { convertFileSrc } from "@tauri-apps/api/tauri";
 import VideoPlayer from "./VideoPlayer";
+import Timeline from "./Timeline";
+import { TimelineProvider, useTimeline } from "../context/TimelineContext";
 
 const MediaLibrary: React.FC = () => {
   const [media, setMedia] = useState<MediaDto[]>([]);
@@ -54,6 +56,47 @@ const MediaLibrary: React.FC = () => {
     } catch {}
   };
 
+  const RightPanel: React.FC = () => {
+    const timeline = useTimeline();
+    return (
+      <div className="flex-1 p-6 overflow-y-auto">
+        {selected ? (
+          <div className="space-y-4 max-w-5xl">
+            <div className="text-base font-semibold">Preview</div>
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-3">
+              {console.log("[MediaLibrary] selected preview_path:", selected.preview_path, "path:", selected.path)}
+              <VideoPlayer
+                clip={{ id: String(selected.id), filePath: selected.preview_path || selected.path, fileName: selected.filename }}
+                onTimeUpdate={(ct, dur) => {
+                  if (dur && Math.abs((timeline.state.duration || 0) - dur) > 0.01) timeline.setDuration(dur);
+                  timeline.setCurrentTime(ct);
+                }}
+                onReady={(api) => {
+                  timeline.registerSeekHandler((t: number) => api.seek(t));
+                  const d = api.getDuration();
+                  if (d && Math.abs((timeline.state.duration || 0) - d) > 0.01) timeline.setDuration(d);
+                }}
+              />
+            </div>
+            <Timeline />
+            <div className="text-sm text-gray-300">
+              <div>Resolution: {selected.width ?? "?"}×{selected.height ?? "?"} • Codec: {selected.codec ?? "?"}</div>
+              <div>Format: {selected.format ?? "?"} • Duration: {selected.duration?.toFixed(1) ?? (timeline.state.duration ? timeline.state.duration.toFixed(1) : "?")}s</div>
+            </div>
+          </div>
+        ) : (
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center text-gray-400">
+              <div className="text-5xl mb-3">🎬</div>
+              <div className="text-base">No media selected.</div>
+              <div className="text-sm">Use the Import button above to add a video.</div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-full bg-gray-900 text-white">
       {/* Sidebar */}
@@ -91,30 +134,10 @@ const MediaLibrary: React.FC = () => {
         )}
       </div>
 
-      {/* Preview Panel */}
-      <div className="flex-1 p-6 overflow-y-auto">
-        {selected ? (
-          <div className="space-y-4 max-w-5xl">
-            <div className="text-base font-semibold">Preview</div>
-            <div className="bg-gray-800 rounded-lg border border-gray-700 p-3">
-              {console.log("[MediaLibrary] selected preview_path:", selected.preview_path, "path:", selected.path)}
-              <VideoPlayer clip={{ id: String(selected.id), filePath: selected.preview_path || selected.path, fileName: selected.filename }} />
-            </div>
-            <div className="text-sm text-gray-300">
-              <div>Resolution: {selected.width ?? "?"}×{selected.height ?? "?"} • Codec: {selected.codec ?? "?"}</div>
-              <div>Format: {selected.format ?? "?"} • Duration: {selected.duration?.toFixed(1) ?? "?"}s</div>
-            </div>
-          </div>
-        ) : (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center text-gray-400">
-              <div className="text-5xl mb-3">🎬</div>
-              <div className="text-base">No media selected.</div>
-              <div className="text-sm">Use the Import button above to add a video.</div>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Preview + Timeline Panel */}
+      <TimelineProvider>
+        <RightPanel />
+      </TimelineProvider>
     </div>
   );
 };

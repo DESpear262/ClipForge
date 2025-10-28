@@ -1,30 +1,17 @@
-feat: migrate to Tauri v1, add WebM preview pipeline, simplify player UI
+docs(core): align project to Tauri v1; implement Konva timeline (PR #6) with bi-directional seek
 
-Block C – Video Preview (stabilization via preview proxies)
+- Standardized docs to Tauri v1:
+  - Updated Memory Bank (`projectbrief.md`, `systemPatterns.md`, `techContext.md`) and README
+  - Removed v2 capability references; documented v1 allowlist usage
+- Implemented PR #6 (Konva Timeline):
+  - Added `TimelineContext` with currentTime/duration/pxPerSecond and seek registration
+  - Added `Timeline.tsx` (grid, single-clip bar, playhead, zoom slider, interaction overlay)
+  - Wired timeline under `MediaLibrary` with `TimelineProvider`
+  - Added bi-directional sync with `VideoPlayer` (`onTimeUpdate` -> timeline; `onReady.seek` -> player)
+- Fixed issues:
+  - Resolved `formatTime` initialization error in timeline
+  - Fixed `onReady` props destructuring bug causing seek registration failure
+  - Improved interaction reliability with transparent overlay; added concise seek logs
 
-Changes:
-- Migrated backend/tooling to Tauri v1 (stable allowlist, path resolver).
-- Implemented WebM preview generation on import (VP9/Opus with VP8/Vorbis fallback).
-- Added ensure_preview(video_path) to backfill previews for existing rows.
-- Playback now prefers preview_path and uses Blob URLs for `.webm` (no asset dependency).
-- Kept legacy MP4 path with asset+Blob fallback as last resort.
-- Removed duplicate out-of-picture controls; rely on native in-picture controls.
+Result: Timeline displays and tracks time during playback; clicking/dragging on timeline seeks video reliably. Ready for PR #7 (trim handles) and PR #8 (export pipeline).
 
-Config/Deps:
-- tauri.conf.json rewritten for v1 allowlist (fs.readFile, dialog.*, protocol.asset). CSP includes asset/data/blob for media/img.
-- Cargo.toml uses tauri = "1"; removed v2 plugins.
-- Frontend: `@tauri-apps/api` v1; switched to `invoke/convertFileSrc` from api/tauri and `readBinaryFile` from api/fs.
-
-DB/Files:
-- SQLite in AppData/ClipForge/clipforge.db; migration adds `preview_path`.
-- Thumbnails in AppData/.../thumbnails, previews in AppData/.../previews.
-
-UI:
-- MediaLibrary shows grid, auto-generates preview when missing, and refreshes.
-- Menu buttons restyled (black text on light gray).
-
-Notes:
-- Dev asset.localhost may refuse; previews use Blob so playback remains reliable.
-
-Next:
-- PR #6 Timeline (Konva) and playhead sync; PR #7/8 trimming and export.

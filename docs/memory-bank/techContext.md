@@ -67,7 +67,8 @@ ClipForge/
 - Vite
 - Tailwind CSS
 - @tauri-apps/api
-- Konva.js (to be added)
+- Konva.js
+- react-konva
 
 ### Backend (Cargo.toml)
 - tauri (v1)
@@ -120,7 +121,7 @@ npm run tauri build
 
 ### tauri.conf.json
 - Window configuration
-- Capabilities and CSP (`media-src` must include `asset:` and `blob:`)
+- Allowlist and CSP (`media-src` must include `asset:` and `blob:`)
 - Sidecar definitions (FFmpeg)
 - Bundle settings
 

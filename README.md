@@ -1,6 +1,6 @@
 # ClipForge - Desktop Video Editor
 
-A lightweight Windows desktop video editor built with Tauri v2 + React + Konva.js + FFmpeg.
+A lightweight Windows desktop video editor built with Tauri v1 + React + Konva.js + FFmpeg.
 
 ## Project Status
 
@@ -12,8 +12,8 @@ Implement the complete workflow: **Import → Preview → Trim → Export**
 
 ## Technology Stack
 
-- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS + Konva.js
-- **Backend**: Tauri v2 (Rust) + FFmpeg
+- **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS + Konva.js
+- **Backend**: Tauri v1 (Rust) + FFmpeg
 - **Platform**: Windows x64
 - **Output**: Native `.exe` via Tauri bundler
 
