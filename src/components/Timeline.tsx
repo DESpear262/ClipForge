@@ -11,7 +11,7 @@ import { useTimeline } from "../context/TimelineContext";
  * - Zoom via slider adjusts pxPerSecond
  */
 const Timeline: React.FC = () => {
-  const { state, setCurrentTime, setPxPerSecond, requestSeek } = useTimeline();
+  const { state, setCurrentTime, setPxPerSecond, requestSeek, setInPoint, setOutPoint, setTrimRange, setLoopTrim } = useTimeline();
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ width: number; height: number }>({ width: 800, height: 160 });
   const [isDragging, setIsDragging] = useState(false);
@@ -33,6 +33,20 @@ const Timeline: React.FC = () => {
   const timelineWidth = size.width;
   const timelineHeight = size.height;
   const totalPx = (state.duration || 0) * state.pxPerSecond;
+
+  // Compute dynamic minimum px/sec so full video fits at min zoom
+  const dynamicMinPps = useMemo(() => {
+    const d = state.duration || 0;
+    if (d <= 0) return 1;
+    return Math.max(1, timelineWidth / d);
+  }, [timelineWidth, state.duration]);
+
+  // Ensure pxPerSecond is never below dynamic min (e.g., on resize or duration change)
+  useEffect(() => {
+    if (state.pxPerSecond < dynamicMinPps) {
+      setPxPerSecond(dynamicMinPps);
+    }
+  }, [dynamicMinPps, state.pxPerSecond, setPxPerSecond]);
 
   // Determine tick spacing based on zoom
   const { majorEverySec, minorEverySec } = useMemo(() => {
@@ -74,39 +88,117 @@ const Timeline: React.FC = () => {
     return lines;
   }, [state.duration, state.pxPerSecond, majorEverySec, minorEverySec, timelineWidth]);
 
-  // Mouse interactions: click/drag to seek
-  const stageRef = useRef<any>(null);
+  // Trim and playhead geometry
+  const inX = (state.inPoint || 0) * state.pxPerSecond;
+  const outX = (state.outPoint || 0) * state.pxPerSecond;
+  const playheadX = (state.currentTime || 0) * state.pxPerSecond;
+
+  // Dragging state
+  type DragMode = "none" | "in" | "out" | "move";
+  const [dragMode, setDragMode] = useState<DragMode>("none");
+  const dragStartRef = useRef<{ startX: number; in: number; out: number } | null>(null);
+  const [showTooltip, setShowTooltip] = useState<{ which: "in" | "out" | null; x: number; label: string } | null>(null);
+
+  const snapX = useCallback((x: number, altKey: boolean) => {
+    if (altKey) return x;
+    const snapPx = 6;
+    const sec = Math.round(x / state.pxPerSecond);
+    const secX = sec * state.pxPerSecond;
+    if (Math.abs(secX - x) <= snapPx) x = secX;
+    if (Math.abs(playheadX - x) <= snapPx) x = playheadX;
+    return x;
+  }, [state.pxPerSecond, playheadX]);
+
   const toTimeFromX = useCallback((x: number) => {
-    const clampedX = Math.max(0, x);
+    const clampedX = Math.max(0, Math.min(x, (state.duration || 0) * state.pxPerSecond));
     const t = clampedX / state.pxPerSecond;
     return Math.max(0, Math.min(t, state.duration || Number.MAX_SAFE_INTEGER));
   }, [state.pxPerSecond, state.duration]);
 
+  // Mouse interactions: handles, move, and seek
+  const stageRef = useRef<any>(null);
+
   const handleDown = useCallback((evt: any) => {
-    setIsDragging(true);
     const stage = evt.target.getStage?.();
     const pos = stage?.getPointerPosition();
     if (!pos) return;
-    const t = toTimeFromX(pos.x);
-    console.log("[Timeline] mousedown seek ->", t.toFixed(3));
+    const alt = !!evt.evt?.altKey;
+    const x = snapX(pos.x, alt);
+    const near = (hx: number) => Math.abs(hx - x) <= 8;
+    if (near(inX)) {
+      setDragMode("in");
+      dragStartRef.current = { startX: x, in: state.inPoint || 0, out: state.outPoint || 0 };
+      setShowTooltip({ which: "in", x, label: formatTime(toTimeFromX(x)) });
+      return;
+    }
+    if (near(outX)) {
+      setDragMode("out");
+      dragStartRef.current = { startX: x, in: state.inPoint || 0, out: state.outPoint || 0 };
+      setShowTooltip({ which: "out", x, label: formatTime(toTimeFromX(x)) });
+      return;
+    }
+    if (x >= inX && x <= outX) {
+      setDragMode("move");
+      dragStartRef.current = { startX: x, in: state.inPoint || 0, out: state.outPoint || 0 };
+      return;
+    }
+    // plain seek
+    const t = toTimeFromX(x);
     setCurrentTime(t);
     requestSeek(t);
-  }, [setCurrentTime, requestSeek, toTimeFromX]);
+  }, [snapX, inX, outX, state.inPoint, state.outPoint, setCurrentTime, requestSeek, toTimeFromX]);
 
   const handleMove = useCallback((evt: any) => {
-    if (!isDragging) return;
     const stage = evt.target.getStage?.();
     const pos = stage?.getPointerPosition();
     if (!pos) return;
-    const t = toTimeFromX(pos.x);
-    setCurrentTime(t);
-    requestSeek(t);
-  }, [isDragging, setCurrentTime, requestSeek, toTimeFromX]);
+    const alt = !!evt.evt?.altKey;
+    const x = snapX(pos.x, alt);
+    if (dragMode === "in") {
+      const t = toTimeFromX(x);
+      setInPoint(t);
+      setShowTooltip({ which: "in", x, label: formatTime(t) });
+      return;
+    }
+    if (dragMode === "out") {
+      const t = toTimeFromX(x);
+      setOutPoint(t);
+      setShowTooltip({ which: "out", x, label: formatTime(t) });
+      return;
+    }
+    if (dragMode === "move" && dragStartRef.current) {
+      const deltaPx = x - dragStartRef.current.startX;
+      const deltaSec = deltaPx / state.pxPerSecond;
+      setTrimRange(dragStartRef.current.in + deltaSec, dragStartRef.current.out + deltaSec);
+      return;
+    }
+  }, [dragMode, snapX, toTimeFromX, setInPoint, setOutPoint, setTrimRange, state.pxPerSecond]);
 
-  const handleUp = useCallback(() => setIsDragging(false), []);
-  const handleLeave = useCallback(() => setIsDragging(false), []);
+  const handleUp = useCallback(() => {
+    setDragMode("none");
+    setShowTooltip(null);
+    const i = state.inPoint || 0;
+    const o = state.outPoint || state.duration || 0;
+    if (state.currentTime < i || state.currentTime > o) {
+      setCurrentTime(i);
+      requestSeek(i);
+    }
+  }, [state.inPoint, state.outPoint, state.duration, state.currentTime, setCurrentTime, requestSeek]);
+  const handleLeave = useCallback(() => { setDragMode("none"); setShowTooltip(null); }, []);
 
-  const playheadX = (state.currentTime || 0) * state.pxPerSecond;
+  // Keyboard precision: when a handle was last active, arrows adjust
+  const containerKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = e.shiftKey ? 0.5 : 0.05;
+    if (e.key === "ArrowLeft") {
+      if (dragMode === "out") setOutPoint((state.outPoint || 0) - step);
+      else setInPoint((state.inPoint || 0) - step);
+      e.preventDefault();
+    } else if (e.key === "ArrowRight") {
+      if (dragMode === "out") setOutPoint((state.outPoint || 0) + step);
+      else setInPoint((state.inPoint || 0) + step);
+      e.preventDefault();
+    }
+  }, [dragMode, setInPoint, setOutPoint, state.inPoint, state.outPoint]);
 
   return (
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-3">
@@ -116,16 +208,20 @@ const Timeline: React.FC = () => {
           <span className="text-xs text-gray-400">Zoom</span>
           <input
             type="range"
-            min={10}
-            max={1000}
-            step={10}
+            min={Math.max(1, Math.floor(dynamicMinPps))}
+            max={2000}
+            step={1}
             value={state.pxPerSecond}
-            onChange={(e) => setPxPerSecond(Number(e.target.value))}
+            onChange={(e) => setPxPerSecond(Math.max(dynamicMinPps, Number(e.target.value)))}
             className="w-40"
           />
+          <label className="text-xs text-gray-400 ml-3 flex items-center gap-1 select-none">
+            <input type="checkbox" checked={!!state.loopTrim} onChange={(e) => setLoopTrim(e.target.checked)} />
+            Loop trim
+          </label>
         </div>
       </div>
-      <div ref={containerRef} className="w-full" style={{ height: timelineHeight }}>
+      <div ref={containerRef} className="w-full" style={{ height: timelineHeight }} tabIndex={0} onKeyDown={containerKeyDown}>
         <Stage
           width={timelineWidth}
           height={timelineHeight}
@@ -165,6 +261,20 @@ const Timeline: React.FC = () => {
               opacity={0.25}
               cornerRadius={6}
             />
+            {/* Dim outside trim */}
+            <Rect x={0} y={0} width={Math.max(0, inX)} height={timelineHeight} fill="#000" opacity={0.15} />
+            <Rect x={Math.max(outX, 0)} y={0} width={Math.max(0, timelineWidth - outX)} height={timelineHeight} fill="#000" opacity={0.15} />
+            {/* Trim selection highlight */}
+            <Rect x={Math.max(0, inX)} y={timelineHeight / 2 - 18} width={Math.max(0, outX - inX)} height={36} fill="#10b981" opacity={0.25} cornerRadius={6} />
+            {/* Handles */}
+            <Rect x={Math.max(0, inX) - 6} y={timelineHeight / 2 - 22} width={12} height={44} fill="#10b981" opacity={0.85} cornerRadius={3} />
+            <Rect x={Math.max(0, outX) - 6} y={timelineHeight / 2 - 22} width={12} height={44} fill="#ef4444" opacity={0.85} cornerRadius={3} />
+            {showTooltip && (
+              <Group>
+                <Rect x={showTooltip.x + 8} y={8} width={70} height={22} fill="#111827" opacity={0.9} cornerRadius={4} />
+                <Text x={showTooltip.x + 12} y={12} text={showTooltip.label} fontSize={12} fill="#e5e7eb" />
+              </Group>
+            )}
           </Layer>
           <Layer>
             {/* Playhead */}
@@ -185,6 +295,10 @@ const Timeline: React.FC = () => {
             />
           </Layer>
         </Stage>
+        {/* Footer labels */}
+        <div className="mt-2 text-xs text-gray-300">
+          In: {formatTime(state.inPoint || 0)} | Out: {formatTime(state.outPoint || 0)} | Len: {formatTime(Math.max(0, (state.outPoint || 0) - (state.inPoint || 0)))}
+        </div>
       </div>
     </div>
   );

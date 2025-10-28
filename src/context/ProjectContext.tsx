@@ -27,6 +27,7 @@ interface ProjectState {
   clips: ProjectClip[];
   activeClipId: string | null;
   playback: PlaybackState;
+  clipTrimById?: Record<string, { inPoint: number; outPoint: number }>;
 }
 
 /**
@@ -39,6 +40,7 @@ interface ProjectContextType {
   setActiveClip: (clipId: string | null) => void;
   clearProject: () => void;
   updatePlayback: (playback: Partial<PlaybackState>) => void;
+  setClipTrim: (clipId: string, inPoint: number, outPoint: number) => void;
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
@@ -70,6 +72,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({
       duration: 0,
       isPlaying: false,
     },
+    clipTrimById: {},
   });
 
   /**
@@ -144,12 +147,23 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({
         duration: 0,
         isPlaying: false,
       },
+      clipTrimById: {},
     });
+  };
+
+  /**
+   * Store trim range for a given clip id
+   */
+  const setClipTrim = (clipId: string, inPoint: number, outPoint: number) => {
+    setState((prev) => ({
+      ...prev,
+      clipTrimById: { ...(prev.clipTrimById || {}), [clipId]: { inPoint, outPoint } },
+    }));
   };
 
   return (
     <ProjectContext.Provider
-      value={{ state, addClip, setClipMetadata, setActiveClip, clearProject, updatePlayback }}
+      value={{ state, addClip, setClipMetadata, setActiveClip, clearProject, updatePlayback, setClipTrim }}
     >
       {children}
     </ProjectContext.Provider>

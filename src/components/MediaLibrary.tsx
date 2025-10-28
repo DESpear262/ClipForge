@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef as useReactRef } from "react";
 import { importVideo, getMediaLibrary, deleteMediaItem, type MediaDto, ensurePreview } from "../utils/api";
 import { convertFileSrc } from "@tauri-apps/api/tauri";
 import VideoPlayer from "./VideoPlayer";
 import Timeline from "./Timeline";
 import { TimelineProvider, useTimeline } from "../context/TimelineContext";
+
 
 const MediaLibrary: React.FC = () => {
   const [media, setMedia] = useState<MediaDto[]>([]);
@@ -58,23 +59,60 @@ const MediaLibrary: React.FC = () => {
 
   const RightPanel: React.FC = () => {
     const timeline = useTimeline();
+    const playerApiRef = useReactRef<{
+      seek: (t: number) => void;
+      play: () => void;
+      pause: () => void;
+      getDuration: () => number;
+    } | null>(null);
+    const lastTimeRef = useReactRef<number>(0);
+    useEffect(() => {
+      if (selected) {
+        timeline.setActiveClip(String(selected.id), selected.duration);
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selected?.id, selected?.duration]);
     return (
       <div className="flex-1 p-6 overflow-y-auto">
         {selected ? (
           <div className="space-y-4 max-w-5xl">
             <div className="text-base font-semibold">Preview</div>
             <div className="bg-gray-800 rounded-lg border border-gray-700 p-3">
-              {console.log("[MediaLibrary] selected preview_path:", selected.preview_path, "path:", selected.path)}
               <VideoPlayer
                 clip={{ id: String(selected.id), filePath: selected.preview_path || selected.path, fileName: selected.filename }}
                 onTimeUpdate={(ct, dur) => {
                   if (dur && Math.abs((timeline.state.duration || 0) - dur) > 0.01) timeline.setDuration(dur);
                   timeline.setCurrentTime(ct);
+                  // Loop/pause logic at outPoint
+                  const i = timeline.state.inPoint || 0;
+                  const o = timeline.state.outPoint || timeline.state.duration || 0;
+                  if (o > i && ct >= o - 0.01 && playerApiRef.current) {
+                    if (timeline.state.loopTrim) {
+                      playerApiRef.current.seek(i);
+                      playerApiRef.current.play();
+                    } else {
+                      playerApiRef.current.seek(o);
+                      playerApiRef.current.pause();
+                    }
+                  }
+                  lastTimeRef.current = ct;
                 }}
                 onReady={(api) => {
                   timeline.registerSeekHandler((t: number) => api.seek(t));
                   const d = api.getDuration();
                   if (d && Math.abs((timeline.state.duration || 0) - d) > 0.01) timeline.setDuration(d);
+                  // Ensure default trim covers the full duration once known
+                  const inPt = timeline.state.inPoint || 0;
+                  if (d && (timeline.state.outPoint || 0) <= 0.11) {
+                    // Treat very small default out as uninitialized
+                    // Set out to full duration
+                    // Defer to next tick to avoid conflicting state during onReady
+                    setTimeout(() => {
+                      const dur = api.getDuration();
+                      timeline.setTrimRange(inPt, dur || d);
+                    }, 0);
+                  }
+                  playerApiRef.current = api;
                 }}
               />
             </div>

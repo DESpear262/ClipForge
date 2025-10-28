@@ -1,7 +1,7 @@
 # Active Context: ClipForge
 
 ## Current Work Focus
-**Primary Task**: Trimming & export workflow. Import/preview and the Konva timeline (PR #6) are complete. The project is standardized on Tauri v1.
+**Primary Task**: Export workflow. Import/preview, Konva timeline (PR #6), and trim handles (PR #7) are complete. The project is standardized on Tauri v1.
 
 ## Recent Changes
 - ✅ Aligned documentation to Tauri v1 (removed v2 references)
@@ -9,9 +9,13 @@
 - ✅ Added `TimelineContext` and integrated under `MediaLibrary`
 - ✅ Exposed `onReady` control API from `VideoPlayer` (seek/play/pause)
 - ✅ Fixed timeline format-time init bug and seek registration bug
+- ✅ Implemented PR #7: trim handles, selection drag, snapping, keyboard precision, loop toggle
+- ✅ Dynamic min zoom so full clip fits at minimum zoom
+- ✅ After setting gates, playhead snaps to in-point if outside
+- ✅ Fixed provider-order/hook usage and removed noisy logs
 
 ## Active Development
-**PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅, PR #6 (Konva Timeline) ✅
+**PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅, PR #6 (Konva Timeline) ✅, PR #7 (Trim Handles) ✅
 
 ### What Works
 - Tauri application launches successfully (v1)
@@ -25,22 +29,24 @@
 - IPC bridge and context wiring
  - Konva timeline renders grid/clip, playhead syncs with playback
  - Bi-directional control: clicking/dragging timeline seeks the video
- - Zoom slider adjusts px/second (10–1000)
+ - Zoom slider adjusts px/second with dynamic min so full video fits
+ - Trim handles with snapping (whole seconds, playhead), Alt disables snapping
+ - Keyboard precision on handles (0.05s, Shift=0.5s)
+ - Loop trim toggle; playback pauses at out if loop off
 
 ### Current State
-- **ProjectContext** stores clips and playback state
-- **TimelineContext** provides `currentTime`, `duration`, `pxPerSecond`, and a `requestSeek` API
-- **Timeline** component renders grid/clip/playhead; interaction overlay captures seeks
+- **ProjectContext** stores clips, playback state, and per-clip trim ranges
+- **TimelineContext** provides `currentTime`, `duration`, `pxPerSecond`, trim state, `requestSeek`
+- **Timeline** component renders grid/clip/playhead; handles trim edit and selection move
 - **useImport** invokes `open_file_dialog`, validates format, adds clip, triggers probe
 - **useFFmpeg** invokes `probe_video_metadata` to read metadata
 - **VideoPlayer** uses Blob URLs for `.webm` previews, exposes `onReady` control API
 - **CSP** allows `asset:` and `blob:` media sources
 
 ### Next Immediate Steps
-1. Implement trim handles and in/out state (PR #7)
-2. Implement FFmpeg export with `-ss`/`-to`, progress events (PR #8)
-3. Continue Memory Bank maintenance
-4. Optional: thumbnails via blob to avoid asset errors in dev
+1. Implement FFmpeg export with `-ss`/`-to`, progress events (PR #8)
+2. Continue Memory Bank maintenance
+3. Optional: thumbnails via blob to avoid asset errors in dev
 
 ## Active Decisions
 
@@ -63,7 +69,6 @@
 - Types defined for better TypeScript safety
 
 ### Known Gaps
-- Trim handles not implemented
 - Export pipeline not implemented
 
 ### Upcoming Challenges

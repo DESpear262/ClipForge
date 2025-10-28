@@ -171,6 +171,14 @@ App.tsx
 - **Efficient Updates**: React memo where needed
 - **Batch Operations**: Batch FFmpeg operations when possible
 
+## Timeline Interaction Rules
+- **Zoom**: Slider controls px/sec with a dynamic minimum so the full clip fits at min zoom.
+- **Handles**: Left = in-point (green), Right = out-point (red). Dragging inside selection moves both.
+- **Snapping**: Snaps to whole seconds and to the playhead within ~6 px; hold Alt to disable snapping.
+- **Keyboard**: With handle active/focused, Arrow keys adjust by 0.05s; Shift+Arrow = 0.5s.
+- **Playback**: If loop is off, playback pauses at out; if loop is on, playback jumps to in and continues.
+- **Gating**: After setting gates, if the playhead lies outside [in, out], it snaps to the in-point.
+
 ## Dependency Chain
 ```
 Frontend Dependencies: React → Tauri API → IPC → Tauri Backend

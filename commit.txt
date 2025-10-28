@@ -1,17 +1,18 @@
-docs(core): align project to Tauri v1; implement Konva timeline (PR #6) with bi-directional seek
+feat(timeline): complete PR #7 trim UI; add fit-to-duration zoom and playhead snap
 
-- Standardized docs to Tauri v1:
-  - Updated Memory Bank (`projectbrief.md`, `systemPatterns.md`, `techContext.md`) and README
-  - Removed v2 capability references; documented v1 allowlist usage
-- Implemented PR #6 (Konva Timeline):
-  - Added `TimelineContext` with currentTime/duration/pxPerSecond and seek registration
-  - Added `Timeline.tsx` (grid, single-clip bar, playhead, zoom slider, interaction overlay)
-  - Wired timeline under `MediaLibrary` with `TimelineProvider`
-  - Added bi-directional sync with `VideoPlayer` (`onTimeUpdate` -> timeline; `onReady.seek` -> player)
-- Fixed issues:
-  - Resolved `formatTime` initialization error in timeline
-  - Fixed `onReady` props destructuring bug causing seek registration failure
-  - Improved interaction reliability with transparent overlay; added concise seek logs
+- Implemented PR #7 (Trim Handles):
+  - Left/right handles with snapping (whole seconds, playhead; Alt disables)
+  - Dragging inside selection moves window; keyboard precision (0.05s, Shift=0.5s)
+  - Loop trim toggle; playback pauses at out when loop is off
+  - Persist per-clip trim in project state; mirrored via TimelineContext
+- UX improvements:
+  - Dynamic minimum zoom so full video fits at max zoom-out
+  - After setting gates, playhead snaps to in-point if outside
+- Stability fixes:
+  - Moved selection init into useEffect; fixed provider ordering errors
+  - Removed noisy MediaLibrary selection logs
 
-Result: Timeline displays and tracks time during playback; clicking/dragging on timeline seeks video reliably. Ready for PR #7 (trim handles) and PR #8 (export pipeline).
+Docs (memory-bank):
+- Updated activeContext and progress to reflect PR #7 completion and new timeline rules
+- Added systemPatterns timeline interaction rules
 

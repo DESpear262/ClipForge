@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useMemo, useRef, useState, useCallback } from "react";
+import { useProject } from "./ProjectContext";
 
 /**
  * Timeline state and coordination context
@@ -10,6 +11,10 @@ export interface TimelineState {
   currentTime: number;
   duration: number;
   pxPerSecond: number;
+  inPoint: number;
+  outPoint: number;
+  loopTrim: boolean;
+  activeClipId?: string;
 }
 
 interface TimelineContextType {
@@ -25,6 +30,17 @@ interface TimelineContextType {
    * Register the seek handler from the player; call with undefined to clear.
    */
   registerSeekHandler: (fn?: (t: number) => void) => void;
+  /**
+   * Set or update the active clip; initializes trim range if missing
+   */
+  setActiveClip: (clipId: string, duration?: number) => void;
+  /**
+   * Update trim points with clamping and min gap
+   */
+  setTrimRange: (inPoint: number, outPoint: number) => void;
+  setInPoint: (inPoint: number) => void;
+  setOutPoint: (outPoint: number) => void;
+  setLoopTrim: (loop: boolean) => void;
 }
 
 const TimelineContext = createContext<TimelineContextType | undefined>(undefined);
@@ -36,7 +52,9 @@ export const useTimeline = () => {
 };
 
 export const TimelineProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, setState] = useState<TimelineState>({ currentTime: 0, duration: 0, pxPerSecond: 100 });
+  const { setClipTrim, state: project } = useProject();
+  const MIN_GAP = 0.1;
+  const [state, setState] = useState<TimelineState>({ currentTime: 0, duration: 0, pxPerSecond: 100, inPoint: 0, outPoint: 0, loopTrim: false, activeClipId: undefined });
   const seekHandlerRef = useRef<((t: number) => void) | undefined>(undefined);
 
   const setCurrentTime = useCallback((t: number) => {
@@ -44,11 +62,16 @@ export const TimelineProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   const setDuration = useCallback((d: number) => {
-    setState((prev) => ({ ...prev, duration: Math.max(0, d || 0) }));
+    setState((prev) => {
+      const duration = Math.max(0, d || 0);
+      const inPoint = Math.max(0, Math.min(prev.inPoint, duration));
+      const outPoint = Math.max(inPoint + MIN_GAP, Math.min(prev.outPoint || duration, duration));
+      return { ...prev, duration, inPoint, outPoint };
+    });
   }, []);
 
   const setPxPerSecond = useCallback((pps: number) => {
-    const clamped = Math.max(10, Math.min(pps, 1000));
+    const clamped = Math.max(1, Math.min(pps, 2000));
     setState((prev) => ({ ...prev, pxPerSecond: clamped }));
   }, []);
 
@@ -61,9 +84,41 @@ export const TimelineProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     seekHandlerRef.current = fn;
   }, []);
 
+  const setTrimRange = useCallback((inPoint: number, outPoint: number) => {
+    setState((prev) => {
+      const duration = prev.duration || 0;
+      const i = Math.max(0, Math.min(inPoint, duration));
+      const o = Math.max(i + MIN_GAP, Math.min(outPoint, duration));
+      if (prev.activeClipId) setClipTrim(prev.activeClipId, i, o);
+      return { ...prev, inPoint: i, outPoint: o };
+    });
+  }, [setClipTrim]);
+
+  const setInPoint = useCallback((inPoint: number) => {
+    setTrimRange(inPoint, state.outPoint || state.duration || 0);
+  }, [setTrimRange, state.outPoint, state.duration]);
+
+  const setOutPoint = useCallback((outPoint: number) => {
+    setTrimRange(state.inPoint || 0, outPoint);
+  }, [setTrimRange, state.inPoint]);
+
+  const setActiveClip = useCallback((clipId: string, duration?: number) => {
+    setState((prev) => {
+      const d = duration ?? prev.duration;
+      const saved = project.clipTrimById?.[clipId];
+      const inPoint = saved ? saved.inPoint : 0;
+      const outPoint = saved ? saved.outPoint : Math.max(MIN_GAP, d || 0);
+      return { ...prev, activeClipId: clipId, duration: d || prev.duration, inPoint, outPoint };
+    });
+  }, [project.clipTrimById]);
+
+  const setLoopTrim = useCallback((loop: boolean) => {
+    setState((prev) => ({ ...prev, loopTrim: loop }));
+  }, []);
+
   const value = useMemo<TimelineContextType>(
-    () => ({ state, setCurrentTime, setDuration, setPxPerSecond, requestSeek, registerSeekHandler }),
-    [state, setCurrentTime, setDuration, setPxPerSecond, requestSeek, registerSeekHandler]
+    () => ({ state, setCurrentTime, setDuration, setPxPerSecond, requestSeek, registerSeekHandler, setActiveClip, setTrimRange, setInPoint, setOutPoint, setLoopTrim }),
+    [state, setCurrentTime, setDuration, setPxPerSecond, requestSeek, registerSeekHandler, setActiveClip, setTrimRange, setInPoint, setOutPoint, setLoopTrim]
   );
 
   return <TimelineContext.Provider value={value}>{children}</TimelineContext.Provider>;
