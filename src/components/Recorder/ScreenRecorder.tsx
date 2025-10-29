@@ -14,6 +14,8 @@ const ScreenRecorder: React.FC = () => {
   const [sources, setSources] = useState<Array<{ id: string; name: string }>>([]);
   const [selected, setSelected] = useState<string>("desktop");
   const [fps, setFps] = useState<number>(60);
+  const [audioDevices, setAudioDevices] = useState<string[]>([]);
+  const [audioDevice, setAudioDevice] = useState<string>("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -21,6 +23,12 @@ const ScreenRecorder: React.FC = () => {
       const list = await listSources();
       setSources(list.map((s) => ({ id: s.id, name: s.name })));
       if (list.length > 0) setSelected(list[0].id);
+      try {
+        const { invoke } = await import("@tauri-apps/api/tauri");
+        const devs = await invoke<string[]>("list_audio_devices_cmd");
+        setAudioDevices(devs);
+        if (devs.length > 0) setAudioDevice(devs[0]);
+      } catch {}
     })();
   }, [listSources]);
 
@@ -28,7 +36,7 @@ const ScreenRecorder: React.FC = () => {
     if (busy || state.isRecording) return;
     setBusy(true);
     try {
-      await start({ fps });
+      await start({ fps, audioDevice });
     } finally {
       setBusy(false);
     }
@@ -74,6 +82,16 @@ const ScreenRecorder: React.FC = () => {
         className="w-20 px-2 py-1 bg-gray-200 text-black rounded text-sm"
         title="Frames per second"
       />
+      <select
+        value={audioDevice}
+        onChange={(e) => setAudioDevice(e.target.value)}
+        className="px-2 py-1 bg-gray-200 text-black rounded text-sm"
+        title="Microphone"
+      >
+        {audioDevices.map((d) => (
+          <option key={d} value={d}>{d}</option>
+        ))}
+      </select>
       {!state.isRecording ? (
         <button
           onClick={handleStart}

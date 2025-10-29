@@ -2,6 +2,7 @@ import React from "react";
 import { useTauriContext } from "../context/TauriContext";
 import ScreenRecorder from "./Recorder/ScreenRecorder";
 import WebcamRecorder from "./Recorder/WebcamRecorder";
+import AudioMeter from "./Recorder/AudioMeter";
 
 /**
  * Menu bar component providing application menu items
@@ -82,6 +83,7 @@ const MenuBar: React.FC = () => {
       </div>
       <div className="flex items-center gap-3">
         <ScreenRecorder />
+        <AudioMeter />
         <WebcamRecorder />
         <button
           onClick={handleHelp}

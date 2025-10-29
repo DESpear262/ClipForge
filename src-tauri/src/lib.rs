@@ -58,6 +58,7 @@ pub fn run() {
       start_screen_recording_cmd,
       stop_recording_cmd,
       list_capture_sources_cmd,
+      list_audio_devices_cmd,
       transcode_recording,
       open_file_dialog,
       import_video,
@@ -85,8 +86,8 @@ fn test_ipc() -> String {
 
 /// Start screen recording (desktop) using FFmpeg gdigrab. Returns output path on success.
 #[tauri::command]
-async fn start_screen_recording_cmd(app: tauri::AppHandle, fps: Option<u32>, output_path: Option<String>) -> Result<String, String> {
-  recording::start_screen_recording(&app, fps, output_path)
+async fn start_screen_recording_cmd(app: tauri::AppHandle, fps: Option<u32>, output_path: Option<String>, audio_device: Option<String>) -> Result<String, String> {
+  recording::start_screen_recording(&app, fps, output_path, audio_device)
     .await
     .map_err(|e| format!("Failed to start recording: {}", e))
 }
@@ -101,6 +102,12 @@ async fn stop_recording_cmd(app: tauri::AppHandle) -> Result<String, String> {
 #[tauri::command]
 async fn list_capture_sources_cmd(app: tauri::AppHandle) -> Result<Vec<recording::CaptureSource>, String> {
   recording::list_capture_sources(&app).await.map_err(|e| format!("Failed to list sources: {}", e))
+}
+
+/// List audio input devices via ffmpeg dshow
+#[tauri::command]
+async fn list_audio_devices_cmd(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+  recording::list_audio_devices(&app).await.map_err(|e| format!("Failed to list audio devices: {}", e))
 }
 
 /**

@@ -50,6 +50,7 @@ pub async fn start_screen_recording(
   app: &AppHandle,
   fps: Option<u32>,
   output_path: Option<String>,
+  audio_device: Option<String>,
 ) -> Result<String> {
   // Only one active session allowed
   {
@@ -70,28 +71,33 @@ pub async fn start_screen_recording(
   let fps = fps.unwrap_or(60).max(1).min(120);
   let out_path = output_path.unwrap_or(default_output_path(app)?);
 
-  // ffmpeg -f gdigrab -framerate 60 -i desktop -pix_fmt yuv420p -c:v libx264 -preset veryfast -crf 23 -r 60 -y out.mp4
+  // Build args for video (gdigrab) and optional audio (dshow)
+  let mut args: Vec<String> = vec![
+    "-f".into(), "gdigrab".into(),
+    "-framerate".into(), format!("{}", fps),
+    "-draw_mouse".into(), "1".into(),
+    "-i".into(), "desktop".into(),
+  ];
+  if let Some(dev) = audio_device.as_ref() {
+    args.extend_from_slice(&["-f".into(), "dshow".into(), "-i".into(), format!("audio={}", dev)]);
+  }
+  // Encoding params
+  args.extend_from_slice(&[
+    "-pix_fmt".into(), "yuv420p".into(),
+    "-c:v".into(), "libx264".into(),
+    "-preset".into(), "veryfast".into(),
+    "-crf".into(), "23".into(),
+    "-r".into(), format!("{}", fps),
+  ]);
+  if audio_device.is_some() {
+    args.extend_from_slice(&["-c:a".into(), "aac".into(), "-b:a".into(), "160k".into()]);
+    // Map streams explicitly when audio present
+    args.extend_from_slice(&["-map".into(), "0:v:0".into(), "-map".into(), "1:a:0".into()]);
+  }
+  args.extend_from_slice(&["-y".into(), out_path.clone()]);
+
   let mut child = Command::new(&ffmpeg_path)
-    .arg("-f")
-    .arg("gdigrab")
-    .arg("-framerate")
-    .arg(format!("{}", fps))
-    .arg("-draw_mouse")
-    .arg("1")
-    .arg("-i")
-    .arg("desktop")
-    .arg("-pix_fmt")
-    .arg("yuv420p")
-    .arg("-c:v")
-    .arg("libx264")
-    .arg("-preset")
-    .arg("veryfast")
-    .arg("-crf")
-    .arg("23")
-    .arg("-r")
-    .arg(format!("{}", fps))
-    .arg("-y")
-    .arg(&out_path)
+    .args(&args)
     .stdin(std::process::Stdio::piped())
     .stdout(std::process::Stdio::null())
     .stderr(std::process::Stdio::null())
@@ -164,6 +170,44 @@ pub async fn stop_recording(app: &AppHandle) -> Result<String> {
 /// List available capture sources. For PR#1 returns full desktop only.
 pub async fn list_capture_sources(_app: &AppHandle) -> Result<Vec<CaptureSource>> {
   Ok(vec![CaptureSource { id: "desktop".into(), kind: "display".into(), name: "Desktop (Primary)".into() }])
+}
+
+/// List audio capture devices by invoking ffmpeg dshow list and parsing stderr
+pub async fn list_audio_devices(app: &AppHandle) -> Result<Vec<String>> {
+  let ffmpeg_path = app
+    .path_resolver()
+    .resolve_resource("bin/ffmpeg.exe")
+    .context("Failed to resolve ffmpeg path")?;
+  if !ffmpeg_path.exists() {
+    anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
+  }
+  let output = Command::new(&ffmpeg_path)
+    .arg("-f").arg("dshow")
+    .arg("-list_devices").arg("true")
+    .arg("-i").arg("dummy")
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::piped())
+    .output()
+    .await
+    .context("Failed to execute ffmpeg dshow list")?;
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let mut out = Vec::new();
+  for line in stderr.lines() {
+    // Example: "  "Microphone (Realtek(R) Audio)"
+    if line.contains("DirectShow audio devices") { continue; }
+    if let Some(idx) = line.find('"') {
+      let rest = &line[idx+1..];
+      if let Some(end) = rest.find('"') {
+        let name = &rest[..end];
+        // Heuristic: include items that look like microphones
+        if !name.is_empty() { out.push(name.to_string()); }
+      }
+    }
+  }
+  // Deduplicate
+  out.sort();
+  out.dedup();
+  Ok(out)
 }
 
 

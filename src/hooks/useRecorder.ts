@@ -57,9 +57,9 @@ export function useRecorder() {
     }
   }, []);
 
-  const start = useCallback(async (opts?: { fps?: number; outputPath?: string }) => {
+  const start = useCallback(async (opts?: { fps?: number; outputPath?: string; audioDevice?: string }) => {
     try {
-      const out = await invoke<string>("start_screen_recording_cmd", { fps: opts?.fps, outputPath: opts?.outputPath });
+      const out = await invoke<string>("start_screen_recording_cmd", { fps: opts?.fps, outputPath: opts?.outputPath, audioDevice: opts?.audioDevice });
       setState({ isRecording: true, elapsedMs: 0, outputPath: out });
       return out;
     } catch (e) {
