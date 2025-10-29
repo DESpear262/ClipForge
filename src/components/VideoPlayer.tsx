@@ -2,7 +2,6 @@ import React, { useRef, useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/tauri";
 import { readBinaryFile } from "@tauri-apps/api/fs";
 import type { ProjectClip } from "../context/ProjectContext";
-import { formatDuration } from "../utils/formatters";
 
 /**
  * Video player component with custom controls
@@ -26,8 +25,8 @@ interface VideoPlayerProps {
 
 const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate, onReady }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [, setIsPlaying] = useState(false);
+  const [, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -73,26 +72,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate, onReady }
   /**
    * Handle play/pause toggle
    */
-  const handlePlayPause = () => {
-    if (!videoRef.current) return;
-    console.log("[VideoPlayer] handlePlayPause: isPlaying=", isPlaying, "ready=", videoRef.current.readyState);
-    if (isPlaying) {
-      videoRef.current.pause();
-    } else {
-      videoRef.current.play();
-    }
-  };
+  // Note: Native controls handle play/pause
 
   /**
    * Handle seek bar input
    */
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!videoRef.current) return;
-
-    const seekTime = (parseFloat(e.target.value) / 100) * duration;
-    videoRef.current.currentTime = seekTime;
-    setCurrentTime(seekTime);
-  };
+  // Note: Native controls handle seek
 
   /**
    * Handle video time updates
@@ -312,7 +297,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate, onReady }
   // No blob URL cleanup needed when using convertFileSrc
 
   // Calculate seek bar progress
-  const seekProgress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  // Seek progress derived from native controls when needed
 
   if (hasError) {
     return (

@@ -32,4 +32,27 @@ export async function ensurePreview(videoPath: string) {
   return await invoke<string>("ensure_preview", { videoPath });
 }
 
+// Project state persistence
+export interface PersistedState {
+  version: number;
+  lastSelectedPath?: string;
+  timeline?: {
+    pxPerSecond?: number;
+    loopTrim?: boolean;
+  };
+  trimsByPath?: Record<string, { inPoint: number; outPoint: number }>;
+}
+
+export async function loadProjectState(): Promise<PersistedState | null> {
+  try {
+    return await invoke<PersistedState | null>("load_project_state");
+  } catch {
+    return null;
+  }
+}
+
+export async function saveProjectState(state: PersistedState): Promise<void> {
+  await invoke("save_project_state", { state });
+}
+
 

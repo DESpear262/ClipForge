@@ -3,6 +3,7 @@
 
 mod ffmpeg;
 mod db;
+use serde::{Deserialize, Serialize};
 
 use ffmpeg::{probe_metadata, export_trim};
 use tauri::Manager;
@@ -21,6 +22,31 @@ pub fn run() {
       let handle = app.handle();
       let conn = db::open_db(&handle).expect("Failed to open DB");
       app.manage::<Arc<Mutex<Connection>>>(Arc::new(Mutex::new(conn)));
+
+      // In release, explicitly create the main window to the embedded index.html
+      // to avoid any race with protocol initialization.
+      use tauri::{WindowBuilder, WindowUrl};
+      #[cfg(debug_assertions)]
+      {
+        println!("Boot: creating main window -> External(http://localhost:1420)");
+        WindowBuilder::new(app, "main", WindowUrl::External("http://localhost:1420".parse().unwrap()))
+          .title("ClipForge")
+          .inner_size(1200.0, 800.0)
+          .min_inner_size(800.0, 600.0)
+          .build()
+          .expect("failed to build main window (dev)");
+      }
+      #[cfg(not(debug_assertions))]
+      {
+        println!("Boot: creating main window -> App(index.html)");
+        WindowBuilder::new(app, "main", WindowUrl::App("index.html".into()))
+          .title("ClipForge")
+          .inner_size(1200.0, 800.0)
+          .min_inner_size(800.0, 600.0)
+          .build()
+          .expect("failed to build main window (prod)");
+      }
+      // In dev, default window uses dev server from config
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
@@ -33,7 +59,9 @@ pub fn run() {
       get_media_library,
       delete_media_item,
       ensure_preview,
-      export_video
+      export_video,
+      load_project_state,
+      save_project_state
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
@@ -339,4 +367,43 @@ async fn export_video(
   export_trim(&app, &input_path, &output_path, start_sec, end_sec, fc)
     .await
     .map_err(|e| format!("Export failed: {}", e))
+}
+
+/// Persisted project state structure
+#[derive(Serialize, Deserialize, Default)]
+struct PersistedState {
+  version: u32,
+  lastSelectedPath: Option<String>,
+  timeline: Option<PersistedTimeline>,
+  trimsByPath: Option<std::collections::HashMap<String, PersistedTrim>>, 
+}
+
+#[derive(Serialize, Deserialize)]
+struct PersistedTimeline { pxPerSecond: Option<f64>, loopTrim: Option<bool> }
+
+#[derive(Serialize, Deserialize)]
+struct PersistedTrim { inPoint: f64, outPoint: f64 }
+
+fn state_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+  let dir = app.path_resolver().app_data_dir().ok_or("app_data_dir not found")?;
+  let file = dir.join("project.json");
+  Ok(file)
+}
+
+#[tauri::command]
+async fn load_project_state(app: tauri::AppHandle) -> Result<Option<PersistedState>, String> {
+  let path = state_path(&app)?;
+  if !path.exists() { return Ok(None); }
+  let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+  let state: PersistedState = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+  Ok(Some(state))
+}
+
+#[tauri::command]
+async fn save_project_state(app: tauri::AppHandle, state: PersistedState) -> Result<(), String> {
+  let path = state_path(&app)?;
+  if let Some(dir) = path.parent() { std::fs::create_dir_all(dir).map_err(|e| e.to_string())?; }
+  let json = serde_json::to_vec_pretty(&state).map_err(|e| e.to_string())?;
+  std::fs::write(&path, json).map_err(|e| e.to_string())?;
+  Ok(())
 }

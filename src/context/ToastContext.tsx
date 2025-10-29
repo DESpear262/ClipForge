@@ -20,7 +20,7 @@ export interface Toast {
  */
 interface ToastContextType {
   toasts: Toast[];
-  showToast: (message: string, type?: ToastType, duration?: number) => void;
+  showToast: (message: string, type?: ToastType, duration?: number) => string;
   dismissToast: (id: string) => void;
 }
 
@@ -61,6 +61,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
       }, duration);
+      return id;
     },
     []
   );

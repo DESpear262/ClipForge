@@ -192,6 +192,14 @@ App.tsx
 - **Delete**: Menu bar Delete dispatches `request-delete`; media library handles it with confirmation, DB delete, reload, and selects the next item.
 - **Last Selected**: Keep a `lastSelectedRef`; when delete triggers deselection, use last non-null selection to proceed.
 
+## Packaging & Startup (Tauri v1)
+- **Custom Protocol**: Enable `custom-protocol` crate feature and map to `tauri/custom-protocol` so `tauri://localhost` works in release.
+- **Embedded Assets**: Vite `base: './'` and `tauri.conf.json build.distDir: "../dist"`; run `npm run build` before packaging.
+- **Window Creation**:
+  - Dev: create window to `External("http://localhost:1420")`.
+  - Prod: create window to `App("index.html")` after setup to avoid race; or rely on config windows if ordering is known good.
+- **Sidecars**: FFmpeg binaries placed under `bin/` and bundled; when running raw exe from `src-tauri/target/release`, copy `bin/` next to exe.
+
 ## Dependency Chain
 ```
 Frontend Dependencies: React → Tauri API → IPC → Tauri Backend

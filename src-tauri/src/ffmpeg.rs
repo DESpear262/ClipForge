@@ -201,25 +201,48 @@ pub async fn generate_preview_vp8(
         anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
     }
 
-    // ffmpeg -i input -c:v libvpx -b:v 1.5M -vf scale=1280:-1 -c:a libvorbis -b:a 96k -y output.webm
-    let output = Command::new(&ffmpeg_path)
+    // Determine total duration for percent
+    let meta = probe_metadata(app, input_path).await.ok();
+    let total_ms = meta.map(|m| (m.duration * 1000.0).max(1.0)).unwrap_or(1.0);
+
+    // ffmpeg -i input -c:v libvpx ... -progress pipe:1
+    let mut child = Command::new(&ffmpeg_path)
         .arg("-i").arg(input_path)
         .arg("-c:v").arg("libvpx")
         .arg("-b:v").arg("1500k")
         .arg("-vf").arg("scale=1280:-1")
         .arg("-c:a").arg("libvorbis")
         .arg("-b:a").arg("96k")
+        .arg("-progress").arg("pipe:1")
+        .arg("-nostats").arg("-v").arg("error")
         .arg("-y")
         .arg(output_path)
-        .output()
-        .await
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
         .context("Failed to execute ffmpeg for VP8 preview")?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("ffmpeg VP8 preview failed: {}", stderr);
+    app.emit_all("preview:start", serde_json::json!({ "inputPath": input_path })).ok();
+
+    let stdout = child.stdout.take().context("Missing stdout pipe")?;
+    let mut reader = BufReader::new(stdout).lines();
+    while let Some(line) = reader.next_line().await? {
+        if let Some((k,v)) = line.split_once('=') {
+            if k == "out_time_ms" {
+                if let Ok(ms) = v.trim().parse::<f64>() {
+                    let pct = ((ms / total_ms) * 100.0).min(100.0).max(0.0);
+                    app.emit_all("preview:progress", serde_json::json!({ "inputPath": input_path, "percent": pct, "timeMs": ms })).ok();
+                }
+            }
+        }
     }
 
+    let status = child.wait().await?;
+    if !status.success() {
+        anyhow::bail!("ffmpeg VP8 preview failed with status: {}", status);
+    }
+
+    app.emit_all("preview:success", serde_json::json!({ "inputPath": input_path, "outputPath": output_path })).ok();
     Ok(())
 }
 
@@ -297,8 +320,12 @@ pub async fn generate_preview_webm(
         anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
     }
 
-    // ffmpeg -i input -c:v libvpx-vp9 -b:v 2M -deadline good -row-mt 1 -c:a libopus -b:a 96k -speed 4 -vf scale=1280:-1 -y output.webm
-    let output = Command::new(&ffmpeg_path)
+    // Determine total duration for percent
+    let meta = probe_metadata(app, input_path).await.ok();
+    let total_ms = meta.map(|m| (m.duration * 1000.0).max(1.0)).unwrap_or(1.0);
+
+    // ffmpeg -i input ... -progress pipe:1
+    let mut child = Command::new(&ffmpeg_path)
         .arg("-i").arg(input_path)
         .arg("-c:v").arg("libvpx-vp9")
         .arg("-b:v").arg("2000k")
@@ -308,17 +335,36 @@ pub async fn generate_preview_webm(
         .arg("-vf").arg("scale=1280:-1")
         .arg("-c:a").arg("libopus")
         .arg("-b:a").arg("96k")
+        .arg("-progress").arg("pipe:1")
+        .arg("-nostats").arg("-v").arg("error")
         .arg("-y")
         .arg(output_path)
-        .output()
-        .await
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
         .context("Failed to execute ffmpeg for preview")?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("ffmpeg preview failed: {}", stderr);
+    app.emit_all("preview:start", serde_json::json!({ "inputPath": input_path })).ok();
+
+    let stdout = child.stdout.take().context("Missing stdout pipe")?;
+    let mut reader = BufReader::new(stdout).lines();
+    while let Some(line) = reader.next_line().await? {
+        if let Some((k,v)) = line.split_once('=') {
+            if k == "out_time_ms" {
+                if let Ok(ms) = v.trim().parse::<f64>() {
+                    let pct = ((ms / total_ms) * 100.0).min(100.0).max(0.0);
+                    app.emit_all("preview:progress", serde_json::json!({ "inputPath": input_path, "percent": pct, "timeMs": ms })).ok();
+                }
+            }
+        }
     }
 
+    let status = child.wait().await?;
+    if !status.success() {
+        anyhow::bail!("ffmpeg preview failed with status: {}", status);
+    }
+
+    app.emit_all("preview:success", serde_json::json!({ "inputPath": input_path, "outputPath": output_path })).ok();
     Ok(())
 }
 

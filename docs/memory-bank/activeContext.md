@@ -1,7 +1,7 @@
 # Active Context: ClipForge
 
 ## Current Work Focus
-**Primary Task**: Packaging & QA. Import/preview, Konva timeline (PR #6), trim handles (PR #7), and export pipeline (PR #8) are complete. The project is standardized on Tauri v1.
+**Primary Task**: Final QA. Import/preview, Konva timeline (PR #6), trim handles (PR #7), export pipeline (PR #8), and packaging/startup flow are complete on Tauri v1.
 
 ## Recent Changes
 - ✅ Aligned documentation to Tauri v1 (removed v2 references)
@@ -18,6 +18,14 @@
 - ✅ Menu bar: replaced Export with Delete button; dispatches `request-delete` custom event
 - ✅ Media library: delete handler with confirmation, reload, next-item selection, and last-selected fallback to handle transient deselection
 - ✅ Rust fix: import `tauri::Manager` to enable `emit_all` on `AppHandle`
+ - ✅ Packaging: corrected Tauri custom protocol enablement and startup
+   - Cargo features: `default=["custom-protocol"]`, `custom-protocol=["tauri/custom-protocol"]`
+   - Window creation in code: prod → `WindowUrl::App("index.html")`, dev → `WindowUrl::External("http://localhost:1420")`
+   - Vite `base:'./'` to ensure relative asset paths in production
+   - Verified embedded assets load; no `chrome-error://chromewebdata/`
+ - ✅ UI polish: centered header title, full-window layout, metadata card, tidy in/out/len box
+ - ✅ Progress toasts: import success, preview start/progress/success, export percent + success
+ - ✅ JSON persistence: trims per path, timeline zoom, loop toggle, last-selected path
 
 ## Active Development
 **PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅, PR #6 (Konva Timeline) ✅, PR #7 (Trim Handles) ✅, PR #8 (Export Pipeline) ✅
@@ -51,8 +59,8 @@
 - **Menu/Delete** uses `request-delete` event and last-selected clip fallback to avoid deselection race
 
 ### Next Immediate Steps
-1. Build & package for Windows (PR #9), validate sidecar paths
-2. QA test pass, performance checks, and docs (PR #10)
+1. QA test pass, performance checks, and docs (PR #10)
+2. Optional: add export success actions (Open/Play) and cancel support
 3. Continue Memory Bank maintenance
 
 ## Active Decisions

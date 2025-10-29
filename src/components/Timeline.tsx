@@ -14,7 +14,6 @@ const Timeline: React.FC = () => {
   const { state, setCurrentTime, setPxPerSecond, requestSeek, setInPoint, setOutPoint, setTrimRange, setLoopTrim } = useTimeline();
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ width: number; height: number }>({ width: 800, height: 160 });
-  const [isDragging, setIsDragging] = useState(false);
 
   // Resize observer to track container width
   useEffect(() => {
@@ -295,9 +294,11 @@ const Timeline: React.FC = () => {
             />
           </Layer>
         </Stage>
-        {/* Footer labels */}
-        <div className="mt-2 text-xs text-gray-300">
-          In: {formatTime(state.inPoint || 0)} | Out: {formatTime(state.outPoint || 0)} | Len: {formatTime(Math.max(0, (state.outPoint || 0) - (state.inPoint || 0)))}
+        {/* Footer labels in tidy box */}
+        <div className="mt-2 bg-gray-800 border border-gray-700 rounded-lg p-2 text-xs text-gray-300 flex gap-6">
+          <div>In: <span className="text-gray-100">{formatTime(state.inPoint || 0)}</span></div>
+          <div>Out: <span className="text-gray-100">{formatTime(state.outPoint || 0)}</span></div>
+          <div>Len: <span className="text-gray-100">{formatTime(Math.max(0, (state.outPoint || 0) - (state.inPoint || 0)))}</span></div>
         </div>
       </div>
     </div>

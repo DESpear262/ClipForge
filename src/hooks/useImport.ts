@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useProject } from "../context/ProjectContext";
 import { useToastContext } from "../context/ToastContext";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/tauri";
 import { useFFmpeg } from "./useFFmpeg";
 
 /**

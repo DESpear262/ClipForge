@@ -1,8 +1,8 @@
 # Progress: ClipForge
 
-## Current Status: MVP in Progress (Import/Preview/Timeline/Trim/Export complete)
+## Current Status: MVP in Progress (Import/Preview/Timeline/Trim/Export/Packaging complete)
 
-### Overall Completion: ~75%
+### Overall Completion: ~85%
 
 **Status**: Foundation complete, media pipeline in progress
 
@@ -20,6 +20,7 @@
  - ✅ Trim handles with snapping, selection drag, keyboard precision, loop toggle (PR #7)
  - ✅ Dynamic min zoom to fit full video; snap playhead to in after gating
  - ✅ Export pipeline with progress events; frontend export button and status (PR #8)
+ - ✅ Packaging/startup fixed: embedded assets, custom protocol, explicit window creation
 
 ### Infrastructure
 - ✅ Tauri + React + Vite project initialized
@@ -32,7 +33,7 @@
 ## What's Left to Build 🔨
 
 ### Immediate Next Steps
-- [ ] Packaging & QA (PR #9/#10)
+- [ ] QA (PR #10)
 
 ### Media Import Pipeline (BLOCK B)
 - [ ] Drag-and-drop path extraction (enhancement)
@@ -53,6 +54,10 @@
   - Progress bar and events
   - Save dialog
   - Error handling
+ - [x] **PR #9**: Windows Build Validation / Startup
+  - Ensure embedded assets load in release
+  - Correct custom protocol feature mapping
+  - Stable window creation order
 
 ### Packaging & QA (BLOCK E)
 - [ ] **PR #9**: Windows Build & Resource Validation
@@ -85,6 +90,7 @@
 - [x] Timeline (grid, playhead, zoom; single-clip)
 - [x] Export to MP4
 - [x] Progress feedback
+ - [x] Packaged startup loads embedded UI
 
 ### Post-MVP Features (Future)
 - [ ] Screen recording

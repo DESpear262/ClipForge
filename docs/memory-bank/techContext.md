@@ -116,6 +116,7 @@ npm run tauri build
 3. Bundler packages everything into `.exe`
 4. Sidecars (FFmpeg) bundled with executable
 5. Assets (icons, config) embedded
+ 6. Custom protocol enabled (feature `custom-protocol`) so `tauri://localhost` resolves to embedded assets
 
 ## Key Configuration Files
 
@@ -170,6 +171,7 @@ npm run tauri build
 2. **WebView2 Compatibility**: Requires system runtime
 3. **File Path Handling**: Windows path encoding and permissions
 4. **Progress Updates**: Event-driven progress without blocking UI
+5. **Startup Navigation**: The first window must target embedded assets with custom protocol available; use code window creation in setup (prod) to avoid race.
 
 ## Resources
 - [Tauri Documentation](https://tauri.app/v1/guides/)

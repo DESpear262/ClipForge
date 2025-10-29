@@ -1,18 +1,27 @@
-feat(export, ui): complete PR #8; replace menu Export with Delete; robust deletion
+feat(app): finalize MVP polish, packaging/startup, and persistence
 
-- Backend (Rust/Tauri):
-  - Added `export_video` command calling new `export_trim` (FFmpeg with `-progress pipe:1`)
-  - Emits `export:start|progress|success` events; fixed `emit_all` by importing `tauri::Manager`
-  - Implemented `open_export_dialog` save dialog
-- Frontend:
-  - Added `useExport` hook to invoke export and listen to progress
-  - MediaLibrary: Export Trim button with percent status and error display
-  - MenuBar: Replaced Export with Delete; dispatches `request-delete`
-  - MediaLibrary: Handles `request-delete` with confirmation, DB deletion, reload, next selection
-  - Persist last selected clip via ref so delete works even if UI transiently deselects
-- Timeline enhancements (follow-up): dynamic min zoom fits full duration; snap playhead to in after gating
-- Logging: Added targeted logs for delete flow, reduced noisy selection logs
+- UI/UX
+  - Centered header title; full-window layout fix (no white gutter)
+  - Tidy timeline footer (In/Out/Len box); metadata card styling
+  - Moved Export to top bar; improved spacing in right panel
+- Timeline/Trim
+  - Handles with snapping (secs/playhead, Alt to disable); selection move; keyboard precision
+  - Dynamic min zoom to fit full duration; playhead snaps to in if outside gates
+- Export & Preview
+  - Export pipeline with progress events; percent toast and success toast
+  - Preview generation start/progress/success toasts; import success toast
+- Delete flow
+  - Menu Delete dispatch with robust handler; last-selected fallback to avoid deselection race
+- Persistence
+  - JSON project state in AppData: trims by path, timeline zoom, loop toggle, last-selected
+- Packaging/Startup (Tauri v1)
+  - Correct custom protocol feature mapping:
+    - Cargo features: default=[custom-protocol], custom-protocol=[tauri/custom-protocol]
+  - Explicit main window creation in code:
+    - Dev → External("http://localhost:1420")
+    - Prod → App("index.html")
+  - Vite base='./' to ensure relative asset paths; embedded assets load in release
+  - Sidecars (ffmpeg/ffprobe) bundled; note: for raw exe testing, copy bin/ next to exe
 
-docs(memory-bank):
-- Marked PR #8 complete; updated activeContext/progress with export and delete behaviors
-- Documented export pipeline (args, events) and menu delete pattern; noted last-selected fallback
+Result: Packaged app boots to embedded UI (no localhost dev URL); MVP loop Import → Preview → Trim → Export is complete with toasts and persistence.
+
