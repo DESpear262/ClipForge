@@ -453,3 +453,41 @@ pub async fn export_trim(
     Ok(())
 }
 
+/// Transcode a recording (WebM) to MP4 (H.264/AAC) with faststart enabled
+pub async fn transcode_recording_to_mp4(
+    app: &AppHandle,
+    input_path: &str,
+    output_path: &str,
+) -> Result<()> {
+    let ffmpeg_path = app
+        .path_resolver()
+        .resolve_resource("bin/ffmpeg.exe")
+        .context("Failed to resolve ffmpeg path")?;
+
+    if !ffmpeg_path.exists() {
+        anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
+    }
+
+    let output = Command::new(&ffmpeg_path)
+        .arg("-i").arg(input_path)
+        .arg("-c:v").arg("libx264")
+        .arg("-preset").arg("veryfast")
+        .arg("-crf").arg("23")
+        .arg("-pix_fmt").arg("yuv420p")
+        .arg("-c:a").arg("aac")
+        .arg("-b:a").arg("160k")
+        .arg("-movflags").arg("+faststart")
+        .arg("-y")
+        .arg(output_path)
+        .output()
+        .await
+        .context("Failed to execute ffmpeg transcode")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("ffmpeg transcode failed: {}", stderr);
+    }
+
+    Ok(())
+}
+
