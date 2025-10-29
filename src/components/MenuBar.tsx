@@ -3,6 +3,7 @@ import { useTauriContext } from "../context/TauriContext";
 import ScreenRecorder from "./Recorder/ScreenRecorder";
 import WebcamRecorder from "./Recorder/WebcamRecorder";
 import AudioMeter from "./Recorder/AudioMeter";
+import CombinedRecorder from "./Recorder/CombinedRecorder";
 
 /**
  * Menu bar component providing application menu items
@@ -85,6 +86,7 @@ const MenuBar: React.FC = () => {
         <ScreenRecorder />
         <AudioMeter />
         <WebcamRecorder />
+        <CombinedRecorder />
         <button
           onClick={handleHelp}
           className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-black rounded-md transition-colors font-medium"

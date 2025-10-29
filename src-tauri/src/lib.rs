@@ -59,6 +59,8 @@ pub fn run() {
       stop_recording_cmd,
       list_capture_sources_cmd,
       list_audio_devices_cmd,
+      list_video_devices_cmd,
+      start_combined_recording_cmd,
       transcode_recording,
       open_file_dialog,
       import_video,
@@ -108,6 +110,29 @@ async fn list_capture_sources_cmd(app: tauri::AppHandle) -> Result<Vec<recording
 #[tauri::command]
 async fn list_audio_devices_cmd(app: tauri::AppHandle) -> Result<Vec<String>, String> {
   recording::list_audio_devices(&app).await.map_err(|e| format!("Failed to list audio devices: {}", e))
+}
+
+/// List video input devices via ffmpeg dshow
+#[tauri::command]
+async fn list_video_devices_cmd(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+  recording::list_video_devices(&app).await.map_err(|e| format!("Failed to list video devices: {}", e))
+}
+
+/// Start combined screen+webcam (+optional mic) recording with PiP
+#[tauri::command]
+async fn start_combined_recording_cmd(
+  app: tauri::AppHandle,
+  fps: Option<u32>,
+  output_path: Option<String>,
+  webcam_device: String,
+  audio_device: Option<String>,
+  corner: Option<String>,
+  pip_width_px: Option<u32>,
+  margin_px: Option<u32>,
+) -> Result<String, String> {
+  recording::start_combined_recording(&app, fps, output_path, webcam_device, audio_device, corner, pip_width_px, margin_px)
+    .await
+    .map_err(|e| format!("Failed to start combined recording: {}", e))
 }
 
 /**

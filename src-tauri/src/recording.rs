@@ -210,4 +210,151 @@ pub async fn list_audio_devices(app: &AppHandle) -> Result<Vec<String>> {
   Ok(out)
 }
 
+/// List video capture devices via ffmpeg dshow
+pub async fn list_video_devices(app: &AppHandle) -> Result<Vec<String>> {
+  let ffmpeg_path = app
+    .path_resolver()
+    .resolve_resource("bin/ffmpeg.exe")
+    .context("Failed to resolve ffmpeg path")?;
+  if !ffmpeg_path.exists() {
+    anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
+  }
+  let output = Command::new(&ffmpeg_path)
+    .arg("-f").arg("dshow")
+    .arg("-list_devices").arg("true")
+    .arg("-i").arg("dummy")
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::piped())
+    .output()
+    .await
+    .context("Failed to execute ffmpeg dshow list")?;
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let mut out = Vec::new();
+  let mut in_video_section = false;
+  for line in stderr.lines() {
+    if line.contains("DirectShow video devices") { in_video_section = true; continue; }
+    if line.contains("DirectShow audio devices") { in_video_section = false; }
+    if !in_video_section { continue; }
+    if let Some(idx) = line.find('"') {
+      let rest = &line[idx+1..];
+      if let Some(end) = rest.find('"') {
+        let name = &rest[..end];
+        if !name.is_empty() { out.push(name.to_string()); }
+      }
+    }
+  }
+  out.sort();
+  out.dedup();
+  Ok(out)
+}
+
+/// Start combined screen + webcam + optional mic with PiP overlay
+pub async fn start_combined_recording(
+  app: &AppHandle,
+  fps: Option<u32>,
+  output_path: Option<String>,
+  webcam_device: String,
+  audio_device: Option<String>,
+  corner: Option<String>, // "br"|"bl"|"tr"|"tl"
+  pip_width_px: Option<u32>,
+  margin_px: Option<u32>,
+) -> Result<String> {
+  {
+    let mut guard = ACTIVE.lock().unwrap();
+    if guard.is_some() {
+      anyhow::bail!("Recording already in progress");
+    }
+  }
+
+  let ffmpeg_path = app
+    .path_resolver()
+    .resolve_resource("bin/ffmpeg.exe")
+    .context("Failed to resolve ffmpeg path")?;
+  if !ffmpeg_path.exists() {
+    anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
+  }
+
+  let fps = fps.unwrap_or(60).max(1).min(120);
+  let out_path = output_path.unwrap_or(default_output_path(app)?);
+  let pip_w = pip_width_px.unwrap_or(480);
+  let margin = margin_px.unwrap_or(16);
+  let corner = corner.unwrap_or_else(|| "br".to_string());
+
+  // Compute x/y expressions for overlay
+  let x_expr = match corner.as_str() {
+    "bl" => format!("{}", margin),
+    "tr" => format!("W-w-{}", margin),
+    "tl" => format!("{}", margin),
+    _ => format!("W-w-{}", margin), // br
+  };
+  let y_expr = match corner.as_str() {
+    "tr" => format!("{}", margin),
+    "tl" => format!("{}", margin),
+    _ => format!("H-h-{}", margin),
+  };
+
+  // filter_complex: scale webcam to pip_w, pad by 4 px for border, overlay on desktop
+  let filter = format!(
+    "[1:v]scale={}: -1,format=rgba,pad=iw+4:ih+4:2:2:black[cam];[0:v][cam]overlay=x={}:y={}",
+    pip_w, x_expr, y_expr
+  );
+
+  let mut args: Vec<String> = vec![
+    "-f".into(), "gdigrab".into(),
+    "-framerate".into(), format!("{}", fps),
+    "-draw_mouse".into(), "1".into(),
+    "-i".into(), "desktop".into(),
+    "-f".into(), "dshow".into(), "-i".into(), format!("video={}", webcam_device),
+  ];
+  if let Some(dev) = audio_device.as_ref() {
+    args.extend_from_slice(&["-f".into(), "dshow".into(), "-i".into(), format!("audio={}", dev)]);
+  }
+  args.extend_from_slice(&[
+    "-filter_complex".into(), filter,
+    "-c:v".into(), "libx264".into(),
+    "-preset".into(), "veryfast".into(),
+    "-crf".into(), "23".into(),
+    "-r".into(), format!("{}", fps),
+  ]);
+  if audio_device.is_some() {
+    args.extend_from_slice(&["-c:a".into(), "aac".into(), "-b:a".into(), "160k".into(), "-map".into(), "2:a:0".into()]);
+  }
+  args.extend_from_slice(&["-y".into(), out_path.clone()]);
+
+  let mut child = Command::new(&ffmpeg_path)
+    .args(&args)
+    .stdin(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::null())
+    .spawn()
+    .context("Failed to spawn ffmpeg for combined recording")?;
+
+  let started_at = Instant::now();
+  app.emit_all("record:start", serde_json::json!({ "outputPath": out_path, "mode": "combined" }))
+    .ok();
+  {
+    let mut guard = ACTIVE.lock().unwrap();
+    *guard = Some(RecordingState { child, started_at, output_path: out_path.clone() });
+  }
+
+  let app_handle = app.clone();
+  task::spawn(async move {
+    loop {
+      time::sleep(time::Duration::from_secs(1)).await;
+      let (alive, started, out) = {
+        let guard = ACTIVE.lock().unwrap();
+        if let Some(st) = guard.as_ref() {
+          (true, st.started_at, st.output_path.clone())
+        } else { (false, Instant::now(), String::new()) }
+      };
+      if !alive { break; }
+      let elapsed = started.elapsed().as_millis() as u64;
+      app_handle.emit_all("record:progress", serde_json::json!({ "elapsedMs": elapsed, "outputPath": out }))
+        .ok();
+    }
+  });
+
+  Ok(out_path)
+}
+
 
