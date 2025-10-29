@@ -1,5 +1,7 @@
 import React from "react";
 import { useTauriContext } from "../context/TauriContext";
+import ScreenRecorder from "./Recorder/ScreenRecorder";
+import WebcamRecorder from "./Recorder/WebcamRecorder";
 
 /**
  * Menu bar component providing application menu items
@@ -78,7 +80,9 @@ const MenuBar: React.FC = () => {
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
         <span className="text-xl md:text-2xl font-bold text-gray-200">ClipForge</span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
+        <ScreenRecorder />
+        <WebcamRecorder />
         <button
           onClick={handleHelp}
           className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-black rounded-md transition-colors font-medium"

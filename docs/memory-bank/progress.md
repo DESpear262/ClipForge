@@ -1,6 +1,6 @@
 # Progress: ClipForge
 
-## Current Status: MVP in Progress (Import/Preview/Timeline/Trim/Export/Packaging complete)
+## Current Status: MVP in Progress (Import/Preview/Timeline/Trim/Export/Packaging complete) + Sprint 2 Block B PR#5 (Multi-track) implemented + PR#6 (Transitions & Overlays preview)
 
 ### Overall Completion: ~85%
 
@@ -21,6 +21,15 @@
  - ✅ Dynamic min zoom to fit full video; snap playhead to in after gating
  - ✅ Export pipeline with progress events; frontend export button and status (PR #8)
  - ✅ Packaging/startup fixed: embedded assets, custom protocol, explicit window creation
+ - ✅ Multi-track timeline infrastructure (Sprint 2 PR #5)
+   - Tracks (V1/A1/O1), items with media refs, start/end, trimIn/trimOut
+   - Drag between tracks and along time with snapping to seconds/playhead
+   - No-overlap enforcement per track
+   - Persistence via `timelineDoc` in project state
+ - ✅ Transitions & Overlays (Preview)
+   - Model and persistence for transitions (crossfade/fadeblack)
+   - Transition/Overlay menus; text overlays visible in preview
+   - TimelinePreview stacked players for crossfade; black overlay for fadeblack
 
 ### Infrastructure
 - ✅ Tauri + React + Vite project initialized
@@ -34,9 +43,11 @@
 
 ### Immediate Next Steps
 - [ ] QA (PR #10)
+- [ ] Recording source enumeration (multi-display/windows)
+ - [ ] Optional: transcode progress events
 
 ### Media Import Pipeline (BLOCK B)
-- [ ] Drag-and-drop path extraction (enhancement)
+- [ ] Drag-and-drop path extraction from OS (enhancement)
 
 ### Preview & Timeline (BLOCK C)
 - [x] **PR #6**: Konva Timeline Editor
@@ -93,10 +104,8 @@
  - [x] Packaged startup loads embedded UI
 
 ### Post-MVP Features (Future)
-- [ ] Screen recording
-- [ ] Webcam recording
-- [ ] Multi-track timeline
-- [ ] Transitions and effects
+- [x] Multi-track timeline
+- [ ] Transitions and effects (export filtergraph integration in PR #11)
 - [ ] Undo/redo
 - [ ] Project autosave
 - [ ] Cloud export

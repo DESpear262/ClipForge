@@ -1,7 +1,7 @@
 # Active Context: ClipForge
 
 ## Current Work Focus
-**Primary Task**: Final QA. Import/preview, Konva timeline (PR #6), trim handles (PR #7), export pipeline (PR #8), and packaging/startup flow are complete on Tauri v1.
+**Primary Task**: Final QA and Sprint 2 Block A/B. Import/preview, Konva timeline (PR #6), trim handles (PR #7), export pipeline (PR #8), and packaging/startup flow are complete on Tauri v1. PR #1 (Screen Recording) implemented using FFmpeg gdigrab with start/stop/events and UI entrypoint. PR #2 (Webcam Recording) implemented via MediaRecorder → WebM → backend transcode (MP4) with auto-import.
 
 ## Recent Changes
 - ✅ Aligned documentation to Tauri v1 (removed v2 references)
@@ -25,10 +25,22 @@
    - Verified embedded assets load; no `chrome-error://chromewebdata/`
  - ✅ UI polish: centered header title, full-window layout, metadata card, tidy in/out/len box
  - ✅ Progress toasts: import success, preview start/progress/success, export percent + success
- - ✅ JSON persistence: trims per path, timeline zoom, loop toggle, last-selected path
+- ✅ JSON persistence: trims per path, timeline zoom, loop toggle, last-selected path
+- ✅ PR #5 (Sprint 2 – Block B): Multi-track timeline infrastructure
+  - Tracks: V1 (video), A1 (audio), O1 (overlay)
+  - Timeline items with media refs, start/end, trimIn/trimOut
+  - Drag between tracks and along time with snapping and no-overlap guard
+  - Persistence: `timelineDoc` (tracks + items) in project state
+  - UI: Add-to-timeline button in preview panel
+ - ✅ PR #6: Transitions & Overlays (preview)
+   - Transition model with crossfade/fade-to-black between adjacent items (default 1s)
+   - TransitionMenu to add transitions near playhead (V1)
+   - OverlayMenu to add text overlays on O1 with position/color/size
+   - TimelinePreview stacks players to visualize crossfade; fade-to-black via black overlay
+   - Overlays rendered as HTML in preview; persisted with timelineDoc
 
 ## Active Development
-**PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅, PR #6 (Konva Timeline) ✅, PR #7 (Trim Handles) ✅, PR #8 (Export Pipeline) ✅
+**PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅, PR #6 (Konva Timeline) ✅, PR #7 (Trim Handles) ✅, PR #8 (Export Pipeline) ✅, PR #5 (Sprint 2 Block B – Multi-track) ✅, PR #6 (Transitions & Overlays preview) ✅
 
 ### What Works
 - Tauri application launches successfully (v1)
@@ -49,8 +61,8 @@
 
 ### Current State
 - **ProjectContext** stores clips, playback state, and per-clip trim ranges
-- **TimelineContext** provides `currentTime`, `duration`, `pxPerSecond`, trim state, `requestSeek`
-- **Timeline** component renders grid/clip/playhead; handles trim edit and selection move
+- **TimelineContext** provides `currentTime`, `duration`, `pxPerSecond`, trim state, `requestSeek`, and multi-track state (`tracks`, `items`) with CRUD and serialize/hydrate hooks
+- **Timeline** renders shared grid/playhead and multiple `TrackLayer` rows; global selection trim preserved; items draggable with seconds/playhead snapping and overlap prevention per track
 - **useImport** invokes `open_file_dialog`, validates format, adds clip, triggers probe
 - **useFFmpeg** invokes `probe_video_metadata` to read metadata
 - **VideoPlayer** uses Blob URLs for `.webm` previews, exposes `onReady` control API
@@ -84,7 +96,8 @@
 - Types defined for better TypeScript safety
 
 ### Known Gaps
-- Export pipeline not implemented
+- Screen/window enumeration returns desktop only (Windows list pending)
+- Webcam: no progress events during transcode (fast for short clips)
 
 ### Upcoming Challenges
 - FFmpeg sidecar path resolution in production

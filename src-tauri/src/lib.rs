@@ -2,10 +2,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ffmpeg;
+mod recording;
 mod db;
 use serde::{Deserialize, Serialize};
 
-use ffmpeg::{probe_metadata, export_trim};
+use ffmpeg::{probe_metadata, export_trim, transcode_recording_to_mp4};
 use tauri::Manager;
 use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
@@ -54,6 +55,10 @@ pub fn run() {
       open_import_dialog,
       open_export_dialog,
       probe_video_metadata,
+      start_screen_recording_cmd,
+      stop_recording_cmd,
+      list_capture_sources_cmd,
+      transcode_recording,
       open_file_dialog,
       import_video,
       get_media_library,
@@ -76,6 +81,26 @@ pub fn run() {
 fn test_ipc() -> String {
   println!("IPC test command received from frontend");
   "IPC connection successful!".to_string()
+}
+
+/// Start screen recording (desktop) using FFmpeg gdigrab. Returns output path on success.
+#[tauri::command]
+async fn start_screen_recording_cmd(app: tauri::AppHandle, fps: Option<u32>, output_path: Option<String>) -> Result<String, String> {
+  recording::start_screen_recording(&app, fps, output_path)
+    .await
+    .map_err(|e| format!("Failed to start recording: {}", e))
+}
+
+/// Stop active recording session. Returns output path of the recording.
+#[tauri::command]
+async fn stop_recording_cmd(app: tauri::AppHandle) -> Result<String, String> {
+  recording::stop_recording(&app).await.map_err(|e| format!("Failed to stop recording: {}", e))
+}
+
+/// List capture sources (PR#1: desktop only)
+#[tauri::command]
+async fn list_capture_sources_cmd(app: tauri::AppHandle) -> Result<Vec<recording::CaptureSource>, String> {
+  recording::list_capture_sources(&app).await.map_err(|e| format!("Failed to list sources: {}", e))
 }
 
 /**
@@ -367,6 +392,18 @@ async fn export_video(
   export_trim(&app, &input_path, &output_path, start_sec, end_sec, fc)
     .await
     .map_err(|e| format!("Export failed: {}", e))
+}
+
+/// Transcode a WebM recording to MP4 and return output path
+#[tauri::command]
+async fn transcode_recording(app: tauri::AppHandle, input_path: String, output_path: String) -> Result<String, String> {
+  if input_path.is_empty() || output_path.is_empty() {
+    return Err("Invalid input or output path".into());
+  }
+  transcode_recording_to_mp4(&app, &input_path, &output_path)
+    .await
+    .map_err(|e| format!("Transcode failed: {}", e))?;
+  Ok(output_path)
 }
 
 /// Persisted project state structure
