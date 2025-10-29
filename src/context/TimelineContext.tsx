@@ -2,6 +2,39 @@ import React, { createContext, useContext, useMemo, useRef, useState, useCallbac
 import { useProject } from "./ProjectContext";
 
 /**
+ * Multi-track timeline types (PR#5)
+ * Tracks are logical rows; items reference media by id/path and occupy a time range on a track.
+ */
+export type TrackKind = "video" | "audio" | "overlay";
+export interface TrackDef { id: string; kind: TrackKind }
+export interface TimelineItem {
+  id: string;
+  mediaId: number;
+  path: string;
+  trackId: string;
+  start: number;
+  end: number;
+  trimIn: number;
+  trimOut: number;
+  // Overlay props (for track kind 'overlay')
+  overlayText?: string;
+  overlayX?: number; // 0..1 relative
+  overlayY?: number; // 0..1 relative
+  overlayFontSize?: number;
+  overlayColor?: string;
+  overlayAlign?: "center" | "left" | "right";
+}
+
+export type TransitionType = "crossfade" | "fadeblack";
+export interface TransitionDef {
+  id: string;
+  fromItemId: string;
+  toItemId: string;
+  type: TransitionType;
+  duration: number; // seconds
+}
+
+/**
  * Timeline state and coordination context
  *
  * Provides shared state for timeline rendering and playhead control,
@@ -15,6 +48,11 @@ export interface TimelineState {
   outPoint: number;
   loopTrim: boolean;
   activeClipId?: string;
+  // Multi-track additions
+  tracks: TrackDef[];
+  items: TimelineItem[];
+  selectedItemId?: string;
+  transitions: TransitionDef[];
 }
 
 interface TimelineContextType {
@@ -41,6 +79,19 @@ interface TimelineContextType {
   setInPoint: (inPoint: number) => void;
   setOutPoint: (outPoint: number) => void;
   setLoopTrim: (loop: boolean) => void;
+  // Multi-track API
+  setTracks: (tracks: TrackDef[]) => void;
+  addItem: (item: TimelineItem) => void;
+  updateItem: (id: string, patch: Partial<Omit<TimelineItem, "id">>) => void;
+  moveItem: (id: string, toTrackId: string, newStart: number) => void;
+  deleteItem: (id: string) => void;
+  selectItem: (id?: string) => void;
+  serializeTimeline: () => { tracks: TrackDef[]; items: TimelineItem[]; transitions: TransitionDef[] };
+  hydrateTimeline: (doc: { tracks: TrackDef[]; items: TimelineItem[]; transitions?: TransitionDef[] }) => void;
+  // Transitions
+  addTransition: (t: TransitionDef) => void;
+  updateTransition: (id: string, patch: Partial<Omit<TransitionDef, "id">>) => void;
+  deleteTransition: (id: string) => void;
 }
 
 const TimelineContext = createContext<TimelineContextType | undefined>(undefined);
@@ -54,7 +105,23 @@ export const useTimeline = () => {
 export const TimelineProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { setClipTrim, state: project } = useProject();
   const MIN_GAP = 0.1;
-  const [state, setState] = useState<TimelineState>({ currentTime: 0, duration: 0, pxPerSecond: 100, inPoint: 0, outPoint: 0, loopTrim: false, activeClipId: undefined });
+  const [state, setState] = useState<TimelineState>({
+    currentTime: 0,
+    duration: 0,
+    pxPerSecond: 100,
+    inPoint: 0,
+    outPoint: 0,
+    loopTrim: false,
+    activeClipId: undefined,
+    tracks: [
+      { id: "V1", kind: "video" },
+      { id: "A1", kind: "audio" },
+      { id: "O1", kind: "overlay" },
+    ],
+    items: [],
+    selectedItemId: undefined,
+    transitions: [],
+  });
   const seekHandlerRef = useRef<((t: number) => void) | undefined>(undefined);
 
   const setCurrentTime = useCallback((t: number) => {
@@ -116,9 +183,101 @@ export const TimelineProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setState((prev) => ({ ...prev, loopTrim: loop }));
   }, []);
 
+  // ===== Multi-track operations =====
+  const setTracks = useCallback((tracks: TrackDef[]) => {
+    setState((prev) => ({ ...prev, tracks }));
+  }, []);
+
+  const addItem = useCallback((item: TimelineItem) => {
+    setState((prev) => ({ ...prev, items: [...prev.items, item], selectedItemId: item.id }));
+  }, []);
+
+  const updateItem = useCallback((id: string, patch: Partial<Omit<TimelineItem, "id">>) => {
+    setState((prev) => ({
+      ...prev,
+      items: prev.items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
+    }));
+  }, []);
+
+  const moveItem = useCallback((id: string, toTrackId: string, newStart: number) => {
+    setState((prev) => {
+      const it = prev.items.find((x) => x.id === id);
+      if (!it) return prev;
+      const len = Math.max(MIN_GAP, (it.end - it.start));
+      const start = Math.max(0, newStart);
+      const end = start + len;
+      return {
+        ...prev,
+        items: prev.items.map((x) => (x.id === id ? { ...x, trackId: toTrackId, start, end } : x)),
+      };
+    });
+  }, []);
+
+  const deleteItem = useCallback((id: string) => {
+    setState((prev) => ({
+      ...prev,
+      items: prev.items.filter((it) => it.id !== id),
+      selectedItemId: prev.selectedItemId === id ? undefined : prev.selectedItemId,
+    }));
+  }, []);
+
+  const selectItem = useCallback((id?: string) => {
+    setState((prev) => ({ ...prev, selectedItemId: id }));
+  }, []);
+
+  const serializeTimeline = useCallback(() => {
+    return { tracks: state.tracks, items: state.items, transitions: state.transitions };
+  }, [state.tracks, state.items, state.transitions]);
+
+  const hydrateTimeline = useCallback((doc: { tracks: TrackDef[]; items: TimelineItem[]; transitions?: TransitionDef[] }) => {
+    setState((prev) => ({
+      ...prev,
+      tracks: doc.tracks ?? prev.tracks,
+      items: doc.items ?? prev.items,
+      transitions: doc.transitions ?? prev.transitions,
+    }));
+  }, []);
+
+  // Transitions
+  const addTransition = useCallback((t: TransitionDef) => {
+    setState((prev) => ({ ...prev, transitions: [...prev.transitions, t] }));
+  }, []);
+  const updateTransition = useCallback((id: string, patch: Partial<Omit<TransitionDef, "id">>) => {
+    setState((prev) => ({
+      ...prev,
+      transitions: prev.transitions.map((tr) => (tr.id === id ? { ...tr, ...patch } : tr)),
+    }));
+  }, []);
+  const deleteTransition = useCallback((id: string) => {
+    setState((prev) => ({ ...prev, transitions: prev.transitions.filter((t) => t.id !== id) }));
+  }, []);
+
   const value = useMemo<TimelineContextType>(
-    () => ({ state, setCurrentTime, setDuration, setPxPerSecond, requestSeek, registerSeekHandler, setActiveClip, setTrimRange, setInPoint, setOutPoint, setLoopTrim }),
-    [state, setCurrentTime, setDuration, setPxPerSecond, requestSeek, registerSeekHandler, setActiveClip, setTrimRange, setInPoint, setOutPoint, setLoopTrim]
+    () => ({
+      state,
+      setCurrentTime,
+      setDuration,
+      setPxPerSecond,
+      requestSeek,
+      registerSeekHandler,
+      setActiveClip,
+      setTrimRange,
+      setInPoint,
+      setOutPoint,
+      setLoopTrim,
+      setTracks,
+      addItem,
+      updateItem,
+      moveItem,
+      deleteItem,
+      selectItem,
+      serializeTimeline,
+      hydrateTimeline,
+      addTransition,
+      updateTransition,
+      deleteTransition,
+    }),
+    [state, setCurrentTime, setDuration, setPxPerSecond, requestSeek, registerSeekHandler, setActiveClip, setTrimRange, setInPoint, setOutPoint, setLoopTrim, setTracks, addItem, updateItem, moveItem, deleteItem, selectItem, serializeTimeline, hydrateTimeline, addTransition, updateTransition, deleteTransition]
   );
 
   return <TimelineContext.Provider value={value}>{children}</TimelineContext.Provider>;

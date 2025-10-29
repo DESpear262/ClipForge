@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Stage, Layer, Line, Rect, Text, Group } from "react-konva";
 import { useTimeline } from "../context/TimelineContext";
+import TrackLayer from "./Timeline/TrackLayer";
 
 /**
  * Konva-based single-clip timeline with grid, clip bar, and playhead.
@@ -11,9 +12,20 @@ import { useTimeline } from "../context/TimelineContext";
  * - Zoom via slider adjusts pxPerSecond
  */
 const Timeline: React.FC = () => {
-  const { state, setCurrentTime, setPxPerSecond, requestSeek, setInPoint, setOutPoint, setTrimRange, setLoopTrim } = useTimeline();
+  const {
+    state,
+    setCurrentTime,
+    setPxPerSecond,
+    requestSeek,
+    setInPoint,
+    setOutPoint,
+    setTrimRange,
+    setLoopTrim,
+    moveItem,
+    selectItem,
+  } = useTimeline();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState<{ width: number; height: number }>({ width: 800, height: 160 });
+  const [size, setSize] = useState<{ width: number; height: number }>({ width: 800, height: 220 });
 
   // Resize observer to track container width
   useEffect(() => {
@@ -30,8 +42,13 @@ const Timeline: React.FC = () => {
   }, []);
 
   const timelineWidth = size.width;
-  const timelineHeight = size.height;
-  const totalPx = (state.duration || 0) * state.pxPerSecond;
+  const rowHeight = 56;
+  const trackGap = 6;
+  const tracksHeight = state.tracks.length * rowHeight + Math.max(0, state.tracks.length - 1) * trackGap;
+  const topPadding = 0;
+  const bottomPadding = 0;
+  const timelineHeight = Math.max(size.height, tracksHeight + topPadding + bottomPadding);
+  // total width coverage implicitly handled by grid/end calculation
 
   // Compute dynamic minimum px/sec so full video fits at min zoom
   const dynamicMinPps = useMemo(() => {
@@ -87,7 +104,7 @@ const Timeline: React.FC = () => {
     return lines;
   }, [state.duration, state.pxPerSecond, majorEverySec, minorEverySec, timelineWidth]);
 
-  // Trim and playhead geometry
+  // Trim and playhead geometry (global selection)
   const inX = (state.inPoint || 0) * state.pxPerSecond;
   const outX = (state.outPoint || 0) * state.pxPerSecond;
   const playheadX = (state.currentTime || 0) * state.pxPerSecond;
@@ -185,6 +202,54 @@ const Timeline: React.FC = () => {
   }, [state.inPoint, state.outPoint, state.duration, state.currentTime, setCurrentTime, requestSeek]);
   const handleLeave = useCallback(() => { setDragMode("none"); setShowTooltip(null); }, []);
 
+  // Multi-track helpers: locate track index from absolute Y
+  const getTrackIndexFromY = useCallback((absY: number) => {
+    const relativeY = absY; // stage y-origin at 0
+    const band = rowHeight + trackGap;
+    const idx = Math.floor(relativeY / band);
+    return Math.max(0, Math.min(state.tracks.length - 1, idx));
+  }, [state.tracks.length]);
+
+  // Snapping for item drag end
+  const snapTime = useCallback((t: number, altKey: boolean) => {
+    if (altKey) return Math.max(0, t);
+    const snapSec = 1;
+    const sec = Math.round(t / snapSec) * snapSec;
+    const playheadSec = state.currentTime || 0;
+    const candidates = [sec, playheadSec];
+    let best = t;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (const c of candidates) {
+      const d = Math.abs(c - t);
+      if ((d * state.pxPerSecond) <= 6 && d < bestDist) { best = c; bestDist = d; }
+    }
+    return Math.max(0, best);
+  }, [state.currentTime, state.pxPerSecond]);
+
+  // Prevent overlaps on a track by clamping start
+  const clampNoOverlap = useCallback((trackId: string, itemId: string, start: number, len: number) => {
+    const sameTrack = state.items.filter(it => it.trackId === trackId && it.id !== itemId).sort((a,b) => a.start - b.start);
+    let s = Math.max(0, start), e = s + len;
+    // Find neighbors
+    const prev = [...sameTrack].reverse().find(it => it.start <= s);
+    const next = sameTrack.find(it => it.start >= s);
+    if (prev && s < prev.end) { s = prev.end; e = s + len; }
+    if (next && e > next.start) { s = Math.max(0, next.start - len); e = s + len; }
+    return { start: s, end: e };
+  }, [state.items]);
+
+  const handleItemDragEnd = useCallback((id: string, absX: number, absY: number, altKey?: boolean) => {
+    const newStartSec = Math.max(0, absX / state.pxPerSecond);
+    const snappedStart = snapTime(newStartSec, !!altKey);
+    const toIdx = getTrackIndexFromY(absY);
+    const toTrack = state.tracks[toIdx]?.id ?? state.tracks[0]?.id;
+    const it = state.items.find(x => x.id === id);
+    if (!it || !toTrack) return;
+    const len = Math.max(0.1, it.end - it.start);
+    const clamped = clampNoOverlap(toTrack, id, snappedStart, len);
+    moveItem(id, toTrack, clamped.start);
+  }, [state.pxPerSecond, state.tracks, state.items, snapTime, getTrackIndexFromY, clampNoOverlap, moveItem]);
+
   // Keyboard precision: when a handle was last active, arrows adjust
   const containerKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     const step = e.shiftKey ? 0.5 : 0.05;
@@ -249,25 +314,31 @@ const Timeline: React.FC = () => {
               </Group>
             ))}
           </Layer>
-          <Layer listening={false}>
-            {/* Clip block (single clip from 0..duration) */}
-            <Rect
-              x={0}
-              y={timelineHeight / 2 - 18}
-              width={Math.max(timelineWidth, totalPx)}
-              height={36}
-              fill="#2563eb"
-              opacity={0.25}
-              cornerRadius={6}
+          {/* Tracks */}
+          {state.tracks.map((track, idx) => (
+            <TrackLayer
+              key={track.id}
+              track={track}
+              items={state.items.filter(it => it.trackId === track.id)}
+              y={idx * (rowHeight + trackGap)}
+              height={rowHeight}
+              width={timelineWidth}
+              pxPerSecond={state.pxPerSecond}
+              selectedItemId={state.selectedItemId}
+              onItemDragMove={() => { /* visual drag handled by Konva; snap on end */ }}
+              onItemDragEnd={(id, absX, absY) => handleItemDragEnd(id, absX, absY)}
+              onItemMouseDown={(id) => selectItem(id)}
             />
-            {/* Dim outside trim */}
+          ))}
+          <Layer listening={false}>
+            {/* Dim outside trim (global) */}
             <Rect x={0} y={0} width={Math.max(0, inX)} height={timelineHeight} fill="#000" opacity={0.15} />
             <Rect x={Math.max(outX, 0)} y={0} width={Math.max(0, timelineWidth - outX)} height={timelineHeight} fill="#000" opacity={0.15} />
             {/* Trim selection highlight */}
-            <Rect x={Math.max(0, inX)} y={timelineHeight / 2 - 18} width={Math.max(0, outX - inX)} height={36} fill="#10b981" opacity={0.25} cornerRadius={6} />
+            <Rect x={Math.max(0, inX)} y={Math.max(0, (rowHeight/2 - 18))} width={Math.max(0, outX - inX)} height={36} fill="#10b981" opacity={0.15} cornerRadius={6} />
             {/* Handles */}
-            <Rect x={Math.max(0, inX) - 6} y={timelineHeight / 2 - 22} width={12} height={44} fill="#10b981" opacity={0.85} cornerRadius={3} />
-            <Rect x={Math.max(0, outX) - 6} y={timelineHeight / 2 - 22} width={12} height={44} fill="#ef4444" opacity={0.85} cornerRadius={3} />
+            <Rect x={Math.max(0, inX) - 6} y={4} width={12} height={Math.max(44, tracksHeight - 8)} fill="#10b981" opacity={0.35} cornerRadius={3} />
+            <Rect x={Math.max(0, outX) - 6} y={4} width={12} height={Math.max(44, tracksHeight - 8)} fill="#ef4444" opacity={0.35} cornerRadius={3} />
             {showTooltip && (
               <Group>
                 <Rect x={showTooltip.x + 8} y={8} width={70} height={22} fill="#111827" opacity={0.9} cornerRadius={4} />

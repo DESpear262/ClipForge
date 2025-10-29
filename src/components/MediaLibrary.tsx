@@ -3,6 +3,9 @@ import { useExport } from "../hooks/useExport";
 import { getMediaLibrary, deleteMediaItem, type MediaDto, ensurePreview, loadProjectState, saveProjectState, type PersistedState } from "../utils/api";
 import { convertFileSrc } from "@tauri-apps/api/tauri";
 import VideoPlayer from "./VideoPlayer";
+import TimelinePreview from "./TimelinePreview";
+import TransitionMenu from "./Timeline/TransitionMenu";
+import OverlayMenu from "./Timeline/OverlayMenu";
 import Timeline from "./Timeline";
 import { TimelineProvider, useTimeline } from "../context/TimelineContext";
 import { useToastContext } from "../context/ToastContext";
@@ -124,7 +127,7 @@ const MediaLibrary: React.FC = () => {
     const lastTimeRef = useReactRef<number>(0);
     const exportToastIdRef = useReactRef<string | null>(null);
 
-    // Load persisted state on selection change (apply trims and timeline settings)
+    // Load persisted state on initial mount and when selection changes (apply trims/timeline settings and hydrate timelineDoc once)
     useEffect(() => {
       (async () => {
         const state = await loadProjectState();
@@ -137,20 +140,30 @@ const MediaLibrary: React.FC = () => {
           const t = state.trimsByPath[selected.path];
           timeline.setTrimRange(t.inPoint, t.outPoint);
         }
+        // Hydrate multi-track doc if present (only when empty to avoid overwriting)
+        if (state.timelineDoc && timeline.state.items.length === 0) {
+          timeline.hydrateTimeline({ tracks: state.timelineDoc.tracks, items: state.timelineDoc.items, transitions: state.timelineDoc.transitions || [] });
+        }
       })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selected?.path]);
 
-    // Persist state when trims or timeline settings change
+    // Persist state when trims, timeline settings, or multi-track doc change
     useEffect(() => {
       (async () => {
-        const base: PersistedState = { version: 1, lastSelectedPath: selected?.path, timeline: { pxPerSecond: timeline.state.pxPerSecond, loopTrim: timeline.state.loopTrim }, trimsByPath: {} };
+        const base: PersistedState = {
+          version: 1,
+          lastSelectedPath: selected?.path,
+          timeline: { pxPerSecond: timeline.state.pxPerSecond, loopTrim: timeline.state.loopTrim },
+          trimsByPath: {},
+          timelineDoc: timeline.serializeTimeline(),
+        };
         if (selected?.path) {
           base.trimsByPath![selected.path] = { inPoint: timeline.state.inPoint || 0, outPoint: timeline.state.outPoint || (timeline.state.duration || 0) };
         }
         await saveProjectState(base);
       })();
-    }, [selected?.path, timeline.state.inPoint, timeline.state.outPoint, timeline.state.pxPerSecond, timeline.state.loopTrim]);
+    }, [selected?.path, timeline.state.inPoint, timeline.state.outPoint, timeline.state.pxPerSecond, timeline.state.loopTrim, timeline.state.items, timeline.state.tracks]);
 
     // Export progress toast
     useEffect(() => {
@@ -226,45 +239,77 @@ const MediaLibrary: React.FC = () => {
       <div className="flex-1 p-6 overflow-y-auto">
         {selected ? (
           <div className="space-y-6 max-w-5xl">
-            <div className="text-base font-semibold">Preview</div>
+            <div className="text-base font-semibold flex items-center justify-between">
+              <span>Preview</span>
+              {selected && (
+                <div className="flex items-center gap-2">
+                  <button
+                    className="px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded text-black text-xs"
+                    onClick={() => {
+                      const id = `tclip_${Date.now()}`;
+                      const start = 0;
+                      const mediaDur = Number(selected.duration ?? timeline.state.duration ?? 0) || 0;
+                      const trimIn = 0;
+                      const len = Math.max(0.5, mediaDur > 0 ? Math.min(mediaDur, 5) : 5);
+                      const trimOut = Math.max(trimIn + len, len);
+                      timeline.addItem({
+                        id,
+                        mediaId: Number(selected.id),
+                        path: selected.path,
+                        trackId: timeline.state.tracks[0]?.id || "V1",
+                        start,
+                        end: start + len,
+                        trimIn,
+                        trimOut,
+                      });
+                    }}
+                  >
+                    Add to {timeline.state.tracks[0]?.id || "V1"}
+                  </button>
+                  <TransitionMenu />
+                  <OverlayMenu />
+                </div>
+              )}
+            </div>
             <div className="bg-gray-800 rounded-lg border border-gray-700 p-3">
-              <VideoPlayer
-                clip={{ id: String(selected.id), filePath: selected.preview_path || selected.path, fileName: selected.filename }}
-                onTimeUpdate={(ct, dur) => {
-                  if (dur && Math.abs((timeline.state.duration || 0) - dur) > 0.01) timeline.setDuration(dur);
-                  timeline.setCurrentTime(ct);
-                  // Loop/pause logic at outPoint
-                  const i = timeline.state.inPoint || 0;
-                  const o = timeline.state.outPoint || timeline.state.duration || 0;
-                  if (o > i && ct >= o - 0.01 && playerApiRef.current) {
-                    if (timeline.state.loopTrim) {
-                      playerApiRef.current.seek(i);
-                      playerApiRef.current.play();
-                    } else {
-                      playerApiRef.current.seek(o);
-                      playerApiRef.current.pause();
+              {/* Use TimelinePreview when there are timeline items; fallback to single clip */}
+              {timeline.state.items.length > 0 ? (
+                <TimelinePreview />
+              ) : (
+                <VideoPlayer
+                  clip={{ id: String(selected.id), filePath: selected.preview_path || selected.path, fileName: selected.filename }}
+                  onTimeUpdate={(ct, dur) => {
+                    if (dur && Math.abs((timeline.state.duration || 0) - dur) > 0.01) timeline.setDuration(dur);
+                    timeline.setCurrentTime(ct);
+                    // Loop/pause logic at outPoint
+                    const i = timeline.state.inPoint || 0;
+                    const o = timeline.state.outPoint || timeline.state.duration || 0;
+                    if (o > i && ct >= o - 0.01 && playerApiRef.current) {
+                      if (timeline.state.loopTrim) {
+                        playerApiRef.current.seek(i);
+                        playerApiRef.current.play();
+                      } else {
+                        playerApiRef.current.seek(o);
+                        playerApiRef.current.pause();
+                      }
                     }
-                  }
-                  lastTimeRef.current = ct;
-                }}
-                onReady={(api) => {
-                  timeline.registerSeekHandler((t: number) => api.seek(t));
-                  const d = api.getDuration();
-                  if (d && Math.abs((timeline.state.duration || 0) - d) > 0.01) timeline.setDuration(d);
-                  // Ensure default trim covers the full duration once known
-                  const inPt = timeline.state.inPoint || 0;
-                  if (d && (timeline.state.outPoint || 0) <= 0.11) {
-                    // Treat very small default out as uninitialized
-                    // Set out to full duration
-                    // Defer to next tick to avoid conflicting state during onReady
-                    setTimeout(() => {
-                      const dur = api.getDuration();
-                      timeline.setTrimRange(inPt, dur || d);
-                    }, 0);
-                  }
-                  playerApiRef.current = api;
-                }}
-              />
+                    lastTimeRef.current = ct;
+                  }}
+                  onReady={(api) => {
+                    timeline.registerSeekHandler((t: number) => api.seek(t));
+                    const d = api.getDuration();
+                    if (d && Math.abs((timeline.state.duration || 0) - d) > 0.01) timeline.setDuration(d);
+                    const inPt = timeline.state.inPoint || 0;
+                    if (d && (timeline.state.outPoint || 0) <= 0.11) {
+                      setTimeout(() => {
+                        const dur = api.getDuration();
+                        timeline.setTrimRange(inPt, dur || d);
+                      }, 0);
+                    }
+                    playerApiRef.current = api;
+                  }}
+                />
+              )}
             </div>
             {error && <div className="text-xs text-red-400">Export error: {error}</div>}
             <Timeline />

@@ -41,6 +41,31 @@ export interface PersistedState {
     loopTrim?: boolean;
   };
   trimsByPath?: Record<string, { inPoint: number; outPoint: number }>;
+  /**
+   * Multi-track timeline document (PR#5)
+   * Stores tracks and timeline items for editing. This is a stopgap until
+   * full project JSON moves to /projects/*.clipforge.json.
+   */
+  timelineDoc?: {
+    tracks: Array<{ id: string; kind: "video" | "audio" | "overlay" }>;
+    items: Array<{
+      id: string;
+      mediaId: number;
+      path: string;
+      trackId: string;
+      start: number; // timeline start (seconds)
+      end: number;   // timeline end (seconds)
+      trimIn: number;  // media-relative in
+      trimOut: number; // media-relative out
+      overlayText?: string;
+      overlayX?: number;
+      overlayY?: number;
+      overlayFontSize?: number;
+      overlayColor?: string;
+      overlayAlign?: "center" | "left" | "right";
+    }>;
+    transitions?: Array<{ id: string; fromItemId: string; toItemId: string; type: "crossfade" | "fadeblack"; duration: number }>;
+  };
 }
 
 export async function loadProjectState(): Promise<PersistedState | null> {
