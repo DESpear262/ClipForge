@@ -42,7 +42,11 @@ const CombinedRecorder: React.FC = () => {
 
   const handleStop = async () => {
     const anyRecording = screen.state.isRecording || webcam.state.isRecording || !!mic.state.isRecording;
-    if (busy || !anyRecording) return;
+    if (busy || !anyRecording) {
+      console.warn("[CombinedRecorder] Stop called but busy or no recording active", { busy, anyRecording, screen: screen.state.isRecording, webcam: webcam.state.isRecording, mic: mic.state.isRecording });
+      return;
+    }
+    console.log("[CombinedRecorder] Stop initiated", { screen: screen.state.isRecording, webcam: webcam.state.isRecording, mic: mic.state.isRecording });
     setBusy(true);
     try {
       // Stop all in parallel to prevent drift; always attempt each
@@ -50,27 +54,39 @@ const CombinedRecorder: React.FC = () => {
       const micStop = mic.state.isRecording ? mic.stopRecording() : Promise.resolve(null);
       const camStop = webcam.state.isRecording ? webcam.stop() : Promise.resolve(null);
 
+      console.log("[CombinedRecorder] Awaiting stop results...");
       const [screenOut, camOut, micOut] = await Promise.all([screenStop, camStop, micStop]);
 
+      console.log("[CombinedRecorder] Stop results", { screenOut, camOut, micOut: micOut ? (micOut as any).path : null });
+
       if (!screenOut || !camOut) {
+        console.error("[CombinedRecorder] Missing outputs", { screenOut, camOut });
         showToast("Recording outputs missing.", "error", 4000);
         return;
       }
-      // Tauri expects snake_case keys
-      const out = await invoke<string>("compose_pip_cmd", {
-        base_video_path: screenOut,
-        overlay_video_path: camOut,
-        audio_path: micOut && (micOut as any).path ? (micOut as any).path : null,
+      // Tauri expects camelCase keys (not snake_case)
+      const composeParams = {
+        baseVideoPath: screenOut,
+        overlayVideoPath: camOut,
+        audioPath: micOut && (micOut as any).path ? (micOut as any).path : null,
         corner,
-        pip_width_px: pip,
-        margin_px: margin,
-      });
+        pipWidthPx: pip,
+        marginPx: margin,
+      };
+      console.log("[CombinedRecorder] Calling compose_pip_cmd", composeParams);
+      const out = await invoke<string>("compose_pip_cmd", composeParams);
+      console.log("[CombinedRecorder] Compose successful", { outputPath: out });
       try {
+        console.log("[CombinedRecorder] Importing final video...");
         const media = await importVideo(out);
+        console.log("[CombinedRecorder] Import successful", { mediaId: media.id });
         const ev = new CustomEvent("media-imported", { detail: media });
         window.dispatchEvent(ev);
-      } catch {}
+      } catch (importErr) {
+        console.error("[CombinedRecorder] Import failed", importErr);
+      }
     } catch (e) {
+      console.error("[CombinedRecorder] Stop/Compose failed", e);
       showToast("Failed to finalize combined recording.", "error", 4000);
     } finally {
       setBusy(false);

@@ -489,6 +489,8 @@ async fn compose_pip_cmd(
   pip_width_px: Option<u32>,
   margin_px: Option<u32>,
 ) -> Result<String, String> {
+  println!("[compose_pip_cmd] Called with params: base={}, overlay={}, audio={:?}, corner={:?}, pip_w={:?}, margin={:?}", 
+    base_video_path, overlay_video_path, audio_path, corner, pip_width_px, margin_px);
   let out = {
     // Default output next to base video with suffix
     let base = std::path::Path::new(&base_video_path);
@@ -496,7 +498,8 @@ async fn compose_pip_cmd(
     let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
     parent.join(format!("{}_pip.mp4", stem)).to_string_lossy().to_string()
   };
-  compose_pip(
+  println!("[compose_pip_cmd] Output path: {}", out);
+  match compose_pip(
     &app,
     &base_video_path,
     &overlay_video_path,
@@ -505,8 +508,16 @@ async fn compose_pip_cmd(
     pip_width_px,
     margin_px,
     &out,
-  ).await.map_err(|e| format!("Compose failed: {}", e))?;
-  Ok(out)
+  ).await {
+    Ok(_) => {
+      println!("[compose_pip_cmd] Success, output: {}", out);
+      Ok(out)
+    }
+    Err(e) => {
+      println!("[compose_pip_cmd] Compose failed: {}", e);
+      Err(format!("Compose failed: {}", e))
+    }
+  }
 }
 
 /// Persisted project state structure
