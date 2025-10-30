@@ -20,6 +20,10 @@ export async function importVideo(videoPath: string) {
   return await invoke<MediaDto>("import_video", { videoPath });
 }
 
+export async function importAudio(audioPath: string) {
+  return await invoke<MediaDto>("import_audio", { audioPath });
+}
+
 export async function getMediaLibrary() {
   return await invoke<MediaDto[]>("get_media_library");
 }
@@ -57,6 +61,7 @@ export interface PersistedState {
       end: number;   // timeline end (seconds)
       trimIn: number;  // media-relative in
       trimOut: number; // media-relative out
+      gain?: number; // 0..1 volume
       overlayText?: string;
       overlayX?: number;
       overlayY?: number;

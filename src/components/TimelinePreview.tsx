@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import VideoPlayer from "./VideoPlayer";
+import AudioPlayer from "./AudioPlayer";
 import { useTimeline } from "../context/TimelineContext";
 
 /**
@@ -14,45 +15,63 @@ const TimelinePreview: React.FC = () => {
   const primaryApiRef = useRef<{ seek: (t: number) => void; play: () => void; pause: () => void; getDuration: () => number } | null>(null);
   const secondaryApiRef = useRef<{ seek: (t: number) => void; play: () => void; pause: () => void; getDuration: () => number } | null>(null);
 
-  // Compute current items and active transition
-  const { current, next, transition, blend } = useMemo(() => {
-    const t = timeline.state.currentTime || 0;
-    const vTrackId = timeline.state.tracks[0]?.id || "V1";
-    const items = timeline.state.items.filter(it => it.trackId === vTrackId).sort((a,b)=>a.start-b.start);
-    const cur = items.find(it => t >= it.start && t < it.end) || [...items].reverse().find(it => it.start <= t) || items[0];
-    const idx = items.findIndex(i => i.id === (cur?.id || ""));
-    const nxt = idx >= 0 ? items[idx + 1] : undefined;
-    const tr = timeline.state.transitions.find(tr => tr.fromItemId === cur?.id && tr.toItemId === nxt?.id);
-    let alpha = 0;
-    if (tr && nxt) {
-      const start = Math.max(nxt.start - tr.duration, cur!.end - tr.duration);
+// Compute active items across tracks at current time
+const { baseVideo, overlayVideo, transition, blend, activeAudios } = useMemo(() => {
+  const t = timeline.state.currentTime || 0;
+  const videoTracks = timeline.state.tracks.filter(tr => tr.kind === "video");
+  const audioTracks = timeline.state.tracks.filter(tr => tr.kind === "audio");
+  const activeVideos = videoTracks
+    .map(tr => timeline.state.items.filter(it => it.trackId === tr.id && t >= it.start && t < it.end).map(it => ({ it, trackId: tr.id })))
+    .flat()
+    .sort((a,b) => videoTracks.findIndex(v=>v.id===a.trackId) - videoTracks.findIndex(v=>v.id===b.trackId))
+    .map(x => x.it);
+  const base = activeVideos[0];
+  const overlay = activeVideos[1];
+  // Transition on base track only
+  let trn: any = undefined; let alpha = 0;
+  if (base) {
+    const ordered = timeline.state.items.filter(it => it.trackId === base.trackId).sort((a,b)=>a.start-b.start);
+    const idx = ordered.findIndex(i => i.id === base.id);
+    const nxt = idx >= 0 ? ordered[idx + 1] : undefined;
+    trn = timeline.state.transitions.find(x => x.fromItemId === base.id && x.toItemId === nxt?.id);
+    if (trn && nxt) {
+      const start = Math.max(nxt.start - trn.duration, base.end - trn.duration);
       const end = nxt.start;
       if (t >= start && t <= end) {
         const span = Math.max(0.001, end - start);
         alpha = Math.min(1, Math.max(0, (t - start) / span));
       }
     }
-    return { current: cur, next: nxt, transition: tr, blend: alpha };
-  }, [timeline.state.currentTime, timeline.state.items, timeline.state.tracks, timeline.state.transitions]);
+  }
+  const activeAuds = audioTracks
+    .map(tr => timeline.state.items.filter(it => it.trackId === tr.id && t >= it.start && t < it.end))
+    .flat();
+  return { baseVideo: base, overlayVideo: overlay, transition: trn, blend: alpha, activeAudios: activeAuds };
+}, [timeline.state.currentTime, timeline.state.items, timeline.state.tracks, timeline.state.transitions]);
 
   // Update player sources when items change
-  useEffect(() => {
-    setPrimaryPath(current?.path || "");
-    setSecondaryPath(next?.path || "");
-  }, [current?.path, next?.path]);
+useEffect(() => {
+  setPrimaryPath(baseVideo?.path || "");
+  setSecondaryPath(overlayVideo?.path || "");
+}, [baseVideo?.path, overlayVideo?.path]);
 
-  // Sync secondary player time to timeline
+  // Map timeline time -> item media time
   const computeMediaTime = (item: any, timelineTime: number) => {
     if (!item) return 0;
     const rel = Math.max(0, timelineTime - item.start);
     return item.trimIn + rel;
   };
 
-  // When primary reports time updates, propagate timeline time and seek secondary
-  const handlePrimaryTime = () => {
-    // timeline.state.currentTime is already updated by MediaLibrary wrapper; no-op here
-    if (secondaryApiRef.current && next) {
-      const mediaT = computeMediaTime(next, timeline.state.currentTime || 0);
+  // When primary reports time updates, advance the timeline clock and keep the secondary in sync
+const handlePrimaryTime = (ct: number, _dur: number) => {
+  if (baseVideo) {
+    const timelineT = baseVideo.start + Math.max(0, ct - baseVideo.trimIn);
+      if (Math.abs((timeline.state.currentTime || 0) - timelineT) > 0.01) {
+        try { timeline.setCurrentTime(timelineT); } catch {}
+      }
+    }
+  if (secondaryApiRef.current && overlayVideo) {
+    const mediaT = computeMediaTime(overlayVideo, timeline.state.currentTime || 0);
       try { secondaryApiRef.current.seek(mediaT); } catch {}
     }
   };
@@ -63,25 +82,54 @@ const TimelinePreview: React.FC = () => {
     return timeline.state.items.filter(it => it.trackId === oTrackId && t >= it.start && t <= it.end && it.overlayText);
   }, [timeline.state.currentTime, timeline.state.items, timeline.state.tracks]);
 
-  const showSecondary = transition && (transition.type === "crossfade") && blend > 0 && secondaryPath;
+const showSecondary = transition && (transition.type === "crossfade") && blend > 0 && secondaryPath;
   const fadeBlackOpacity = transition && transition.type === "fadeblack" ? blend : 0;
+
+  // Register timeline -> player seek handler so clicking/dragging the timeline seeks playback
+  useEffect(() => {
+    if (!primaryApiRef.current) return;
+    const seek = (t: number) => {
+      const mediaT = computeMediaTime(current, t);
+      try { primaryApiRef.current?.seek(mediaT); } catch {}
+      if (secondaryApiRef.current && next) {
+        const nT = computeMediaTime(next, t);
+        try { secondaryApiRef.current.seek(nT); } catch {}
+      }
+    };
+    timeline.registerSeekHandler(seek);
+    return () => timeline.registerSeekHandler(undefined);
+  }, [current?.id, next?.id, timeline.registerSeekHandler]);
+
+  // Keep timeline duration in sync with composition (max end of video items)
+  useEffect(() => {
+    const vTrackId = timeline.state.tracks[0]?.id || "V1";
+    const items = timeline.state.items.filter(it => it.trackId === vTrackId);
+    const total = items.reduce((m, it) => Math.max(m, it.end), 0);
+    if (total && Math.abs((timeline.state.duration || 0) - total) > 0.01) {
+      try { timeline.setDuration(total); } catch {}
+    }
+  }, [timeline.state.items, timeline.state.tracks, timeline.state.duration, timeline.setDuration]);
 
   return (
     <div className="relative">
       {/* Primary */}
       {primaryPath && (
         <VideoPlayer
-          clip={{ id: current?.id || "primary", filePath: primaryPath, fileName: primaryPath.split("/").pop() || "video" }}
-          onTimeUpdate={() => handlePrimaryTime()}
-          onReady={(api) => { primaryApiRef.current = api; }}
+        clip={{ id: baseVideo?.id || "primary", filePath: primaryPath, fileName: primaryPath.split("/").pop() || "video" }}
+          onTimeUpdate={(ct) => handlePrimaryTime(ct, 0)}
+        onReady={(api) => { primaryApiRef.current = api; }}
+        showControls={false}
+          volume={Math.max(0, Math.min(1, (baseVideo?.gain ?? 1)))}
         />
       )}
       {/* Secondary for crossfade */}
       {showSecondary && (
         <div className="absolute inset-0" style={{ pointerEvents: "none", opacity: Math.max(0, Math.min(1, blend)) }}>
           <VideoPlayer
-            clip={{ id: next?.id || "secondary", filePath: secondaryPath, fileName: secondaryPath.split("/").pop() || "video" }}
+            clip={{ id: overlayVideo?.id || "secondary", filePath: secondaryPath, fileName: secondaryPath.split("/").pop() || "video" }}
             onReady={(api) => { secondaryApiRef.current = api; }}
+            showControls={false}
+            volume={Math.max(0, Math.min(1, (overlayVideo?.gain ?? 1)))}
           />
         </div>
       )}
@@ -108,6 +156,14 @@ const TimelinePreview: React.FC = () => {
           {it.overlayText}
         </div>
       ))}
+      {/* Active audio items */}
+      {activeAudios.map((it) => (
+        <AudioPlayer key={`aud-${it.id}`} srcPath={it.path} volume={Math.max(0, Math.min(1, (it.gain ?? 1)))} />
+      ))}
+  {/* Active audio items */}
+  {activeAudios.map((it) => (
+    <AudioPlayer key={`aud-${it.id}`} srcPath={it.path} />
+  ))}
     </div>
   );
 };
