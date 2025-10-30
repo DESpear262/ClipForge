@@ -26,3 +26,9 @@ dist-ssr
 src-tauri/bin/
 
 src-tauri/target/
+
+# Env files (do not commit secrets)
+.env
+.env.*
+src-tauri/.env
+src-tauri/.env.*
