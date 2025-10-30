@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useWebcamRecorder } from "../../hooks/useWebcamRecorder";
+import { useRecording } from "../../context/RecordingContext";
 import { importVideo } from "../../utils/api";
 
 // WebcamRecorder UI: device select, resolution/fps, preview, start/stop, elapsed, auto-import
 const WebcamRecorder: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const { state, listVideoDevices, ensurePreview, start, stop, prettyElapsed } = useWebcamRecorder();
+  const { webcam } = useRecording();
+  const { state, listVideoDevices, ensurePreview, start, stop, prettyElapsed } = webcam;
   const [devices, setDevices] = useState<Array<{ id: string; label: string }>>([]);
   const [deviceId, setDeviceId] = useState<string>("");
   const [res, setRes] = useState<{ w: number; h: number }>({ w: 1920, h: 1080 });
@@ -133,7 +134,27 @@ const WebcamRecorder: React.FC = () => {
           )}
         </div>
       </div>
-      <video ref={videoRef} muted playsInline className="hidden" />
+      <div className="relative w-full bg-black rounded overflow-hidden border border-gray-700" style={{ height: 120 }}>
+        {!state.previewStream && (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400 select-none">
+            No preview. Click "Start Preview".
+          </div>
+        )}
+        {/* Live webcam preview passthrough */}
+        <video
+          ref={videoRef}
+          muted
+          playsInline
+          className="w-full h-full object-cover"
+        />
+        {/* Red recording dot indicator */}
+        {state.isRecording && (
+          <div className="absolute top-2 left-2 flex items-center gap-2">
+            <span className="inline-block w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-[10px] font-semibold text-red-200 tracking-wide">REC</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
