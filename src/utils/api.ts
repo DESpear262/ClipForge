@@ -71,6 +71,16 @@ export interface PersistedState {
     }>;
     transitions?: Array<{ id: string; fromItemId: string; toItemId: string; type: "crossfade" | "fadeblack"; duration: number }>;
   };
+  /**
+   * Export settings for audio enhancements (PR#12)
+   */
+  exportSettings?: {
+    normalizeEnabled?: boolean;
+    targetLufs?: number; // default -14
+    truePeak?: number;   // default -1.0 dBTP
+    fadeInSec?: number;  // default 0
+    fadeOutSec?: number; // default 0
+  };
 }
 
 export async function loadProjectState(): Promise<PersistedState | null> {
