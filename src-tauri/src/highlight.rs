@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 /// Basic readme: Highlight extraction via OpenAI GPT-4o-mini
 ///
@@ -170,6 +170,8 @@ async fn call_llm(api_key: &str, segments: &[TranscriptSegment], duration: f64) 
         .get(0)
         .map(|c| c.message.content.clone())
         .unwrap_or_else(|| "{}".to_string());
+    // Debug: log raw tool JSON content from the model
+    println!("[highlight] raw tool content: {}", content);
     let tool: ToolCall = serde_json::from_str(&content).context("Tool JSON parse failed")?;
     if tool.tool != "setClipHighlight" { anyhow::bail!("Unexpected tool: {}", tool.tool); }
     Ok(tool)
@@ -192,10 +194,15 @@ pub async fn find_highlight(app: &AppHandle, media_id: i64) -> Result<(f64, f64,
     if duration <= 0.0 { anyhow::bail!("Transcript missing duration"); }
     let segs = transcript.segments.unwrap_or_default();
     if segs.is_empty() { anyhow::bail!("Transcript missing segments"); }
+    // Debug: show transcript stats
+    println!("[highlight] media_id={} transcript loaded: duration={:.2}s segments={}", media_id, duration, segs.len());
 
     let api_key = std::env::var("OPENAI_API_KEY").context("OPENAI_API_KEY not set")?;
+    // Call LLM to obtain tool call; call_llm prints raw JSON content for inspection
     let tool = call_llm(&api_key, &segs, duration).await?;
+    println!("[highlight] tool parsed: name={} start_time={:.3} end_time={:.3}", tool.tool, tool.args.start_time, tool.args.end_time);
     let (start, end) = clamp_times(tool.args.start_time, tool.args.end_time, duration);
+    println!("[highlight] clamped window: start={:.3} end={:.3} (duration={:.3})", start, end, duration);
 
     let out_path = highlight_output_path(app, media_id)?;
     let data = HighlightJson {
@@ -211,6 +218,7 @@ pub async fn find_highlight(app: &AppHandle, media_id: i64) -> Result<(f64, f64,
 
     let out_str = out_path.to_string_lossy().to_string();
     app.emit_all("ai:highlight:success", serde_json::json!({ "mediaId": media_id, "start": start, "end": end, "outputPath": out_str })).ok();
+    println!("[highlight] success emitted for media_id={} -> {}–{}", media_id, start, end);
     Ok((start, end, out_str))
 }
 

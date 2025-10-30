@@ -217,10 +217,12 @@ const MediaLibrary: React.FC = () => {
         try {
           const { listen } = await import("@tauri-apps/api/event");
           unlisten = await listen("ai:highlight:success", (e: any) => {
+            try { console.log("[AI] highlight:success payload=", e?.payload); } catch {}
             const mid = Number(e?.payload?.mediaId ?? -1);
             if (!selected || Number(selected.id) !== mid) return;
             const s = Number(e?.payload?.start ?? 0);
             const ed = Number(e?.payload?.end ?? 0);
+            try { console.log("[AI] applying global trim for mediaId=", mid, "start=", s, "end=", ed); } catch {}
             const start = isFinite(s) ? s : 0;
             const end = isFinite(ed) ? ed : (timeline.state.duration || 0);
             // Apply globally: set trim range and enable loop
@@ -228,6 +230,9 @@ const MediaLibrary: React.FC = () => {
             timeline.setLoopTrim(true);
             try { playerApiRef.current?.seek(start); } catch {}
             showToast("Highlight applied", "success", 2500);
+          });
+          await listen("ai:highlight:error", (e: any) => {
+            try { console.warn("[AI] highlight:error payload=", e?.payload); } catch {}
           });
         } catch (e) {
           console.warn("Failed to listen for ai:highlight:success", e);

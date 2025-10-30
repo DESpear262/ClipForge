@@ -207,14 +207,14 @@ const ToolsPanel: React.FC<ToolsPanelProps> = ({ selected }) => {
       <button
         onClick={onTranscribe}
         disabled={!canTranscribe || !hasKey || !online}
-        className={`px-3 py-2 rounded text-sm font-medium ${canTranscribe && hasKey && online ? "bg-blue-500 hover:bg-blue-600 text-white" : "bg-gray-700 text-gray-400"}`}
+        className={`px-3 py-2 rounded text-sm font-medium ${canTranscribe && hasKey && online ? "bg-blue-500 hover:bg-blue-600" : "bg-gray-700 opacity-60"} text-black`}
       >
         Transcribe Audio
       </button>
       <button
         onClick={onFindHighlight}
         disabled={!selected || !hasTranscript || !hasKey || !online}
-        className={`px-3 py-2 rounded text-sm font-medium ${selected && hasTranscript && hasKey && online ? "bg-purple-500 hover:bg-purple-600 text-white" : "bg-gray-700 text-gray-400"}`}
+        className={`px-3 py-2 rounded text-sm font-medium ${selected && hasTranscript && hasKey && online ? "bg-purple-500 hover:bg-purple-600" : "bg-gray-700 opacity-60"} text-black`}
       >
         Find Highlights
       </button>
@@ -242,8 +242,8 @@ const ToolsPanel: React.FC<ToolsPanelProps> = ({ selected }) => {
           <div className="text-xs text-gray-400">Suggested highlight:</div>
           <div className="text-xs text-gray-200">{hlStart.toFixed(2)} – {hlEnd.toFixed(2)} s</div>
           <div className="mt-2">
-            <button onClick={onPreview} className="px-3 py-1 rounded bg-gray-700 text-gray-200 text-xs hover:bg-gray-600 mr-2">Preview</button>
-            <button onClick={async () => { try { await navigator.clipboard.writeText(`${hlStart?.toFixed(2)}\t${hlEnd?.toFixed(2)}`); } catch {} }} className="px-3 py-1 rounded bg-gray-700 text-gray-200 text-xs hover:bg-gray-600">Copy timestamps</button>
+            <button onClick={onPreview} className="px-3 py-1 rounded bg-gray-700 text-black text-xs hover:bg-gray-600 mr-2">Preview</button>
+            <button onClick={async () => { try { await navigator.clipboard.writeText(`${hlStart?.toFixed(2)}\t${hlEnd?.toFixed(2)}`); } catch {} }} className="px-3 py-1 rounded bg-gray-700 text-black text-xs hover:bg-gray-600">Copy timestamps</button>
           </div>
         </div>
       )}

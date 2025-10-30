@@ -17,13 +17,13 @@ const RightToolbar: React.FC<RightToolbarProps> = ({ selected }) => {
       <div className="px-4 pt-3 pb-2 border-b border-gray-800 flex items-center gap-2">
         <button
           onClick={() => setTab("recording")}
-          className={`px-3 py-1 rounded text-sm font-medium ${tab === "recording" ? "bg-gray-200 text-black" : "bg-gray-700 text-gray-200 hover:bg-gray-600"}`}
+          className={`px-3 py-1 rounded text-sm font-medium border ${tab === "recording" ? "border-black" : "border-transparent hover:border-black"} bg-gray-200 text-black`}
         >
           Recording
         </button>
         <button
           onClick={() => setTab("ai")}
-          className={`px-3 py-1 rounded text-sm font-medium ${tab === "ai" ? "bg-gray-200 text-black" : "bg-gray-700 text-gray-200 hover:bg-gray-600"}`}
+          className={`px-3 py-1 rounded text-sm font-medium border ${tab === "ai" ? "border-black" : "border-transparent hover:border-black"} bg-gray-200 text-black`}
         >
           AI Tools
         </button>

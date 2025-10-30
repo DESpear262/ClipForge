@@ -79,34 +79,27 @@ async fn openai_transcribe_wav(api_key: &str, wav_path: &str) -> Result<serde_js
     let client = reqwest::Client::builder().timeout(Duration::from_secs(45)).build()?;
     let url = "https://api.openai.com/v1/audio/transcriptions";
 
-    // Read file bytes
+    // Read file bytes once; rebuild multipart form per attempt
     let mut file = File::open(wav_path).context("Failed to open WAV for upload")?;
     let mut buf = Vec::new();
     file.read_to_end(&mut buf).context("Failed to read WAV bytes")?;
-
-    let part = reqwest::multipart::Part::bytes(buf)
-        .file_name("audio.wav")
-        .mime_str("audio/wav")?;
-
-    // Request word and segment granularity when available
-    let form = reqwest::multipart::Form::new()
-        .text("model", "whisper-1")
-        .text("response_format", "verbose_json")
-        .text("timestamp_granularities[]", "segment")
-        .text("timestamp_granularities[]", "word")
-        .part("file", part);
 
     // Simple retry: 2 attempts on 429/5xx
     let mut last_err: Option<anyhow::Error> = None;
     for (i, backoff_ms) in [0u64, 250, 1000].iter().enumerate() {
         if i > 0 { sleep(Duration::from_millis(*backoff_ms)).await; }
-        match client
-            .post(url)
-            .bearer_auth(api_key)
-            .multipart(form.clone())
-            .send()
-            .await
-        {
+        // Build form anew for each attempt (Form is not Clone)
+        let part = reqwest::multipart::Part::bytes(buf.clone())
+            .file_name("audio.wav")
+            .mime_str("audio/wav")?;
+        let form = reqwest::multipart::Form::new()
+            .text("model", "whisper-1")
+            .text("response_format", "verbose_json")
+            .text("timestamp_granularities[]", "segment")
+            .text("timestamp_granularities[]", "word")
+            .part("file", part);
+
+        match client.post(url).bearer_auth(api_key).multipart(form).send().await {
             Ok(resp) => {
                 if resp.status().is_success() {
                     let json: serde_json::Value = resp.json().await.context("Invalid OpenAI JSON")?;

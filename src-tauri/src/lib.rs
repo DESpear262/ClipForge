@@ -555,7 +555,11 @@ async fn find_highlight_cmd(
 ) -> Result<serde_json::Value, String> {
   match highlight::find_highlight(&app, media_id).await {
     Ok((start, end, path)) => Ok(serde_json::json!({ "start": start, "end": end, "path": path })),
-    Err(e) => Err(format!("Highlight failed: {}", e)),
+    Err(e) => {
+      // Emit an error event so the frontend can surface details
+      let _ = app.emit_all("ai:highlight:error", serde_json::json!({ "mediaId": media_id, "message": e.to_string() }));
+      Err(format!("Highlight failed: {}", e))
+    },
   }
 }
 

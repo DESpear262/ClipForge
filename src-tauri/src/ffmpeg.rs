@@ -573,7 +573,7 @@ pub async fn export_timeline_segment(app: &AppHandle, req: ExportTimelineRequest
     if !req.overlays.is_empty() {
         // Try a common Windows font
         let font_path = "C\\\\Windows\\\\Fonts\\\\arial.ttf";
-        for (j, ov) in req.overlays.iter().enumerate() {
+        for (_j, ov) in req.overlays.iter().enumerate() {
             let x_expr = format!("(w*{:.6})-text_w/2", ov.x);
             let y_expr = format!("(h*{:.6})-text_h/2", ov.y);
             let fs = ov.font_size.unwrap_or(24);
