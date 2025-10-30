@@ -53,7 +53,7 @@
    - Library now displays videos only; code comment left in `MediaLibrary.tsx` as breadcrumb to revisit later
 
 ## Active Development
-**PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅, PR #6 (Konva Timeline) ✅, PR #7 (Trim Handles) ✅, PR #8 (Export Pipeline) ✅, PR #5 (Sprint 2 Block B – Multi-track) ✅, PR #6 (Transitions & Overlays preview) ✅
+**PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅, PR #6 (Konva Timeline) ✅, PR #7 (Trim Handles) ✅, PR #8 (Export Pipeline) ✅, PR #5 (Sprint 2 Block B – Multi-track) ✅, PR #6 (Transitions & Overlays preview) ✅, PR #7 (Transcription) 🚧
 
 ### What Works
 - Tauri application launches successfully (v1)
@@ -83,10 +83,27 @@
 - **Export** uses original source path with accurate re-encode defaults (H.264/AAC); emits `export:start|progress|success`
 - **Menu/Delete** uses `request-delete` event and last-selected clip fallback to avoid deselection race
 
+### AI Tools (Sprint 2 – Block C)
+- 🚧 PR #7: Transcription (Whisper API)
+  - Backend: `transcribe_media_cmd` Tauri command calls `whisper::transcribe_media`
+  - Audio preprocessing: FFmpeg to mono 16 kHz WAV
+  - OpenAI `audio/transcriptions` with `verbose_json` and word/segment timestamps
+  - JSON persisted under `app_data_dir()/transcripts/<media_id>.json`
+  - Events: `transcript:start|progress|success|error`
+  - Frontend: AI Tools panel with "Transcribe Audio" and segment viewer in `RightToolbar` → `AIToolsPanel`
+- 🚧 PR #8: Highlight Extraction (GPT-4o-mini)
+  - Backend: `find_highlight_cmd` calls `highlight::find_highlight`
+  - Loads transcript, sends segments to GPT-4o-mini (json_object), expects `{ tool: setClipHighlight, args: { start_time, end_time } }`
+  - Validates and clamps within 5–90s and clip duration, persists `*.highlight.json`
+  - Events: `ai:highlight:start|success|error`
+  - Frontend: AI Tools panel adds "Find Highlights" and renders suggested range; Preview button seeks to start (no trim changes yet)
+
 ### Next Immediate Steps
-1. QA test pass, performance checks, and docs (PR #10)
-2. Optional: add export success actions (Open/Play) and cancel support
-3. Continue Memory Bank maintenance
+1. Complete PR #7 (Transcription): finalize Whisper API path and segment viewer polish
+2. Start PR #8 (Highlight Extraction): GPT-4o-mini tool call and schema validation
+3. QA test pass, performance checks, and docs (PR #10)
+4. Optional: add export success actions (Open/Play) and cancel support
+5. Continue Memory Bank maintenance
 
 ## Active Decisions
 

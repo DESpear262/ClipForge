@@ -4,6 +4,8 @@
 mod ffmpeg;
 mod recording;
 mod db;
+mod whisper;
+mod highlight;
 use serde::{Deserialize, Serialize};
 
 use ffmpeg::{probe_metadata, export_trim, transcode_recording_to_mp4, transcode_audio_to_m4a, mux_video_audio};
@@ -70,8 +72,11 @@ pub fn run() {
       delete_media_item,
       ensure_preview,
       export_video,
+      export_timeline_segment_cmd,
       load_project_state,
       save_project_state
+      , transcribe_media_cmd
+      , find_highlight_cmd
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
@@ -428,6 +433,17 @@ async fn export_video(
     .map_err(|e| format!("Export failed: {}", e))
 }
 
+/// Export a composed timeline segment bounded by a selected item fence.
+#[tauri::command]
+async fn export_timeline_segment_cmd(
+  app: tauri::AppHandle,
+  req: ffmpeg::ExportTimelineRequest,
+) -> Result<(), String> {
+  ffmpeg::export_timeline_segment(&app, req)
+    .await
+    .map_err(|e| format!("Export timeline segment failed: {}", e))
+}
+
 /// Transcode a WebM recording to MP4 and return output path
 #[tauri::command]
 async fn transcode_recording(app: tauri::AppHandle, input_path: String, output_path: String) -> Result<String, String> {
@@ -467,6 +483,12 @@ struct PersistedState {
   lastSelectedPath: Option<String>,
   timeline: Option<PersistedTimeline>,
   trimsByPath: Option<std::collections::HashMap<String, PersistedTrim>>, 
+  /// Multi-track doc is stored client-side; optional here if present
+  #[serde(skip_serializing_if = "Option::is_none")]
+  timelineDoc: Option<serde_json::Value>,
+  /// Export settings (PR#12)
+  #[serde(skip_serializing_if = "Option::is_none")]
+  exportSettings: Option<ExportSettings>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -474,6 +496,20 @@ struct PersistedTimeline { pxPerSecond: Option<f64>, loopTrim: Option<bool> }
 
 #[derive(Serialize, Deserialize)]
 struct PersistedTrim { inPoint: f64, outPoint: f64 }
+
+#[derive(Serialize, Deserialize, Default)]
+struct ExportSettings {
+  #[serde(default)]
+  normalizeEnabled: Option<bool>,
+  #[serde(default)]
+  targetLufs: Option<f64>,
+  #[serde(default)]
+  truePeak: Option<f64>,
+  #[serde(default)]
+  fadeInSec: Option<f64>,
+  #[serde(default)]
+  fadeOutSec: Option<f64>,
+}
 
 fn state_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
   let dir = app.path_resolver().app_data_dir().ok_or("app_data_dir not found")?;
@@ -497,4 +533,27 @@ async fn save_project_state(app: tauri::AppHandle, state: PersistedState) -> Res
   let json = serde_json::to_vec_pretty(&state).map_err(|e| e.to_string())?;
   std::fs::write(&path, json).map_err(|e| e.to_string())?;
   Ok(())
+}
+
+/// Transcribe the given media using OpenAI Whisper and persist JSON
+#[tauri::command]
+async fn transcribe_media_cmd(
+  app: tauri::AppHandle,
+  media_id: i64,
+  video_path: String,
+) -> Result<String, String> {
+  if video_path.is_empty() { return Err("Invalid video path".into()); }
+  whisper::transcribe_media(&app, media_id, &video_path).await.map_err(|e| format!("Transcription failed: {}", e))
+}
+
+/// Find a single highlight (start/end) from a transcript via GPT-4o-mini
+#[tauri::command]
+async fn find_highlight_cmd(
+  app: tauri::AppHandle,
+  media_id: i64,
+) -> Result<serde_json::Value, String> {
+  match highlight::find_highlight(&app, media_id).await {
+    Ok((start, end, path)) => Ok(serde_json::json!({ "start": start, "end": end, "path": path })),
+    Err(e) => Err(format!("Highlight failed: {}", e)),
+  }
 }

@@ -1,8 +1,15 @@
 import React, { useState, Suspense } from "react";
+import type { MediaDto } from "../utils/api";
 
 const RecorderPanel = React.lazy(() => import("./Recorder/RecorderPanel"));
 
-const RightToolbar: React.FC = () => {
+const AIToolsPanel = React.lazy(() => import("./AI/ToolsPanel"));
+
+interface RightToolbarProps {
+  selected?: MediaDto | null;
+}
+
+const RightToolbar: React.FC<RightToolbarProps> = ({ selected }) => {
   const [tab, setTab] = useState<"recording" | "ai">("recording");
 
   return (
@@ -28,7 +35,9 @@ const RightToolbar: React.FC = () => {
           </Suspense>
         )}
         {tab === "ai" && (
-          <div className="text-xs text-gray-400">AI tools will appear here in a future update.</div>
+          <Suspense fallback={<div className="text-xs text-gray-400">Loading…</div>}>
+            <AIToolsPanel selected={selected} />
+          </Suspense>
         )}
       </div>
     </div>

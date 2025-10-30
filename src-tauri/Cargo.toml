@@ -33,6 +33,8 @@ windows = { version = "0.58", features = [
   "Win32_UI_WindowsAndMessaging",
   "Win32_Graphics_Gdi"
 ] }
+dotenvy = "0.15"
+reqwest = { version = "0.11", features = ["json", "multipart", "stream"] }
 
 [features]
 # Enable Tauri's custom protocol handler required for embedded assets (tauri://localhost)

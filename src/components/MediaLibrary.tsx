@@ -136,7 +136,7 @@ const MediaLibrary: React.FC = () => {
 
   const RightPanel: React.FC = () => {
     const timeline = useTimeline();
-    const { exportTrim, isExporting, progress, error } = useExport();
+    const { exportTrim, exportTimelineSegment, isExporting, progress, error } = useExport();
     const { showToast, dismissToast } = useToastContext();
     const playerApiRef = useReactRef<{
       seek: (t: number) => void;
@@ -146,6 +146,10 @@ const MediaLibrary: React.FC = () => {
     } | null>(null);
     const lastTimeRef = useReactRef<number>(0);
     const exportToastIdRef = useReactRef<string | null>(null);
+    const [resolution, setResolution] = useState<"source" | "720p" | "1080p">("source");
+    const [normalizeEnabled, setNormalizeEnabled] = useState<boolean>(true);
+    const [fadeInSec, setFadeInSec] = useState<number>(0);
+    const [fadeOutSec, setFadeOutSec] = useState<number>(0);
 
     // Load persisted state on initial mount and when selection changes (apply trims/timeline settings and hydrate timelineDoc once)
     useEffect(() => {
@@ -164,6 +168,12 @@ const MediaLibrary: React.FC = () => {
         if (state.timelineDoc && timeline.state.items.length === 0) {
           timeline.hydrateTimeline({ tracks: state.timelineDoc.tracks, items: state.timelineDoc.items, transitions: state.timelineDoc.transitions || [] });
         }
+        // Export settings (PR#12)
+        if (state.exportSettings) {
+          if (typeof state.exportSettings.normalizeEnabled === 'boolean') setNormalizeEnabled(state.exportSettings.normalizeEnabled);
+          if (typeof state.exportSettings.fadeInSec === 'number') setFadeInSec(state.exportSettings.fadeInSec);
+          if (typeof state.exportSettings.fadeOutSec === 'number') setFadeOutSec(state.exportSettings.fadeOutSec);
+        }
       })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selected?.path]);
@@ -177,13 +187,14 @@ const MediaLibrary: React.FC = () => {
           timeline: { pxPerSecond: timeline.state.pxPerSecond, loopTrim: timeline.state.loopTrim },
           trimsByPath: {},
           timelineDoc: timeline.serializeTimeline(),
+          exportSettings: { normalizeEnabled, targetLufs: -14, truePeak: -1, fadeInSec, fadeOutSec },
         };
         if (selected?.path) {
           base.trimsByPath![selected.path] = { inPoint: timeline.state.inPoint || 0, outPoint: timeline.state.outPoint || (timeline.state.duration || 0) };
         }
         await saveProjectState(base);
       })();
-    }, [selected?.path, timeline.state.inPoint, timeline.state.outPoint, timeline.state.pxPerSecond, timeline.state.loopTrim, timeline.state.items, timeline.state.tracks]);
+    }, [selected?.path, timeline.state.inPoint, timeline.state.outPoint, timeline.state.pxPerSecond, timeline.state.loopTrim, timeline.state.items, timeline.state.tracks, normalizeEnabled, fadeInSec, fadeOutSec]);
 
     // Export progress toast
     useEffect(() => {
@@ -203,6 +214,59 @@ const MediaLibrary: React.FC = () => {
     useEffect(() => {
       const handler = async () => {
         if (!selected) return;
+        // If a timeline item is selected, export that fence with overlapping media; otherwise fall back to single-clip trim export
+        const selId = timeline.state.selectedItemId;
+        const item = selId ? timeline.state.items.find(it => it.id === selId) : undefined;
+        if (item) {
+          const fenceStart = item.start;
+          const fenceEnd = item.end;
+          // Build videos from tracks of kind 'video' that overlap the fence
+          const trackKindOf = (trackId: string) => timeline.state.tracks.find(t => t.id === trackId)?.kind;
+          const overlaps = (it: typeof item) => Math.max(0, Math.min(fenceEnd, it.end) - Math.max(fenceStart, it.start)) > 0.0001;
+          const clipFor = (it: typeof item) => {
+            const overStart = Math.max(fenceStart, it.start);
+            const overEnd = Math.min(fenceEnd, it.end);
+            const duration = Math.max(0, overEnd - overStart);
+            const seek = Math.max(0, it.trimIn + (overStart - it.start));
+            const offset = Math.max(0, overStart - fenceStart);
+            return { path: it.path, seek, duration, offset, gain: it.gain };
+          };
+          const videos = timeline.state.items
+            .filter(it => trackKindOf(it.trackId) === "video" && overlaps(it))
+            .map(v => ({ ...clipFor(v), isBase: v.id === selId }));
+          // Ensure base exists (selected item)
+          if (!videos.some(v => v.isBase)) {
+            videos.push({ ...clipFor(item), isBase: true });
+          }
+          // Audio: include audio from video items and any audio track items overlapping
+          const audiosFromVideos = timeline.state.items
+            .filter(it => trackKindOf(it.trackId) === "video" && overlaps(it))
+            .map(clipFor);
+          const audiosFromA = timeline.state.items
+            .filter(it => trackKindOf(it.trackId) === "audio" && overlaps(it))
+            .map(clipFor);
+          const audios = [...audiosFromVideos, ...audiosFromA];
+          // Text overlays
+          const overlays = timeline.state.items
+            .filter(it => trackKindOf(it.trackId) === "overlay" && overlaps(it) && !!it.overlayText)
+            .map(it => {
+              const overStart = Math.max(fenceStart, it.start);
+              const overEnd = Math.min(fenceEnd, it.end);
+              return {
+                text: it.overlayText || "",
+                offset: Math.max(0, overStart - fenceStart),
+                duration: Math.max(0, overEnd - overStart),
+                x: (it.overlayX ?? 0.5),
+                y: (it.overlayY ?? 0.85),
+                fontSize: it.overlayFontSize ?? 24,
+                color: it.overlayColor ?? "#ffffff",
+                align: it.overlayAlign ?? "center",
+              };
+            });
+          await exportTimelineSegment({ fenceStart, fenceEnd, videos, audios, overlays, resolution, normalizeEnabled, fadeInSec, fadeOutSec });
+          return;
+        }
+        // Fallback: single-clip trim export using global in/out
         const src = selected.path;
         const i = timeline.state.inPoint || 0;
         const o = timeline.state.outPoint || timeline.state.duration || 0;
@@ -263,6 +327,38 @@ const MediaLibrary: React.FC = () => {
               <span>Preview</span>
               {selected && (
                 <div className="flex items-center gap-2">
+                  <select
+                    className="px-2 py-1 bg-gray-200 text-black text-xs rounded"
+                    value={resolution}
+                    onChange={(e) => setResolution(e.target.value as any)}
+                    title="Export resolution"
+                  >
+                    <option value="source">Source</option>
+                    <option value="720p">720p</option>
+                    <option value="1080p">1080p</option>
+                  </select>
+                  <label className="flex items-center gap-1 text-xs">
+                    <input type="checkbox" checked={normalizeEnabled} onChange={(e) => setNormalizeEnabled(e.target.checked)} />
+                    Normalize
+                  </label>
+                  <label className="flex items-center gap-1 text-xs">
+                    Fade In
+                    <select className="px-1 py-0.5 bg-gray-200 text-black text-xs rounded" value={fadeInSec}
+                      onChange={(e) => setFadeInSec(Number(e.target.value))}>
+                      {[0, 0.5, 1, 2, 3].map(n => (
+                        <option key={`fi-${n}`} value={n}>{n}s</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-1 text-xs">
+                    Fade Out
+                    <select className="px-1 py-0.5 bg-gray-200 text-black text-xs rounded" value={fadeOutSec}
+                      onChange={(e) => setFadeOutSec(Number(e.target.value))}>
+                      {[0, 0.5, 1, 2, 3].map(n => (
+                        <option key={`fo-${n}`} value={n}>{n}s</option>
+                      ))}
+                    </select>
+                  </label>
                   {(() => {
                     const videoTracks = timeline.state.tracks.filter(t => t.kind === "video");
                     const audioTracks = timeline.state.tracks.filter(t => t.kind === "audio");
@@ -435,7 +531,7 @@ const MediaLibrary: React.FC = () => {
       <TimelineProvider>
         <div className="flex-1 flex min-w-0">
           <RightPanel />
-          <RightToolbar />
+          <RightToolbar selected={selected} />
         </div>
       </TimelineProvider>
     </div>

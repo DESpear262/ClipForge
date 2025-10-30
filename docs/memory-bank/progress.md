@@ -1,6 +1,6 @@
 # Progress: ClipForge
 
-## Current Status: MVP in Progress (Import/Preview/Timeline/Trim/Export/Packaging complete) + Sprint 2 Block B PR#5 (Multi-track) implemented + PR#6 (Transitions & Overlays preview) + Recording toolbar/mic stabilization + Screen voiceover mux
+## Current Status: MVP in Progress (Import/Preview/Timeline/Trim/Export/Packaging complete) + Sprint 2 Block B PR#5 (Multi-track) implemented + PR#6 (Transitions & Overlays preview) + Recording toolbar/mic stabilization + Screen voiceover mux + PR#7 (Transcription) in progress + PR#8 (Highlight Extraction) started
 
 ### Overall Completion: ~85%
 
