@@ -178,9 +178,8 @@ const ToolsPanel: React.FC<ToolsPanelProps> = ({ selected }) => {
     if (hlStart == null || hlEnd == null) return;
     try {
       // Seek the player to start; looping is handled manually by user for now
-      const { emit } = await import("@tauri-apps/api/event");
-      // If there was a global event bus, we could emit here; instead, use a DOM event consumed by RightPanel (future).
-      // For now, just set the timeline current time via requestSeek exposed through TimelineContext is not accessible here directly.
+      await import("@tauri-apps/api/event");
+      // If there was a global event bus, we could emit here in the future.
     } catch {}
   };
 

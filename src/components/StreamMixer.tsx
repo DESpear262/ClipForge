@@ -25,7 +25,7 @@ const StreamMixer: React.FC = () => {
     return { baseVideo: base, overlayVideo: overlay, activeAudios: auds };
   }, [timeline.state.currentTime, timeline.state.items, timeline.state.tracks]);
 
-  const Slider: React.FC<{ label: string; id: string; value: number; onChange: (v: number) => void }> = ({ label, id, value, onChange }) => (
+  const Slider: React.FC<{ label: string; value: number; onChange: (v: number) => void }> = ({ label, value, onChange }) => (
     <div className="flex items-center gap-2">
       <div className="w-28 text-xs text-gray-300 truncate" title={label}>{label}</div>
       <input
@@ -47,7 +47,6 @@ const StreamMixer: React.FC = () => {
       {baseVideo && (
         <Slider
           label={`V1 (${baseVideo.id})`}
-          id={`mx-${baseVideo.id}`}
           value={baseVideo.gain ?? 1}
           onChange={(v) => timeline.updateItem(baseVideo.id, { gain: v })}
         />
@@ -55,7 +54,6 @@ const StreamMixer: React.FC = () => {
       {overlayVideo && (
         <Slider
           label={`V2 (${overlayVideo.id})`}
-          id={`mx-${overlayVideo.id}`}
           value={overlayVideo.gain ?? 1}
           onChange={(v) => timeline.updateItem(overlayVideo.id, { gain: v })}
         />
@@ -64,7 +62,6 @@ const StreamMixer: React.FC = () => {
         <Slider
           key={`mx-${it.id}`}
           label={`${it.trackId} (${it.id})`}
-          id={`mx-${it.id}`}
           value={it.gain ?? 1}
           onChange={(v) => timeline.updateItem(it.id, { gain: v })}
         />
