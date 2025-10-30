@@ -210,6 +210,31 @@ const MediaLibrary: React.FC = () => {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isExporting, progress?.percent]);
 
+    // Export diagnostics: log backend export events and stderr
+    useEffect(() => {
+      let unsubs: Array<() => void> = [];
+      (async () => {
+        try {
+          const isTauri = typeof (window as any).__TAURI__ !== "undefined" || typeof (window as any).__TAURI_INTERNALS__ !== "undefined";
+          if (!isTauri) return;
+          const { listen } = await import("@tauri-apps/api/event");
+          const add = async (name: string, fn: (e: any) => void) => {
+            const un = await listen(name, fn);
+            unsubs.push(un);
+          };
+          await add("export:start", (e) => { try { console.info("[Export] start:", e.payload); } catch {} });
+          await add("export:progress", (e) => { try { console.info("[Export] progress:", e.payload); } catch {} });
+          await add("export:success", (e) => { try { console.info("[Export] success:", e.payload); } catch {} });
+          await add("export:error", (e) => { try { console.error("[Export] error:", e.payload); } catch {} });
+          await add("export:graph", (e) => { try { console.info("[Export] graph:", e.payload); } catch {} });
+          await add("export:stderr", (e) => { try { console.warn("[Export][stderr]", (e.payload as any)?.line); } catch {} });
+        } catch (e) {
+          try { console.warn("[Export] failed to attach listeners:", e); } catch {}
+        }
+      })();
+      return () => { unsubs.forEach((u) => { try { (u as any)(); } catch {} }); };
+    }, []);
+
     // PR #9: Apply highlight globally when backend signals success
     useEffect(() => {
       let unlisten: any;
@@ -244,7 +269,8 @@ const MediaLibrary: React.FC = () => {
     // Handle MenuBar request-export events and fire export for current selection
     useEffect(() => {
       const handler = async () => {
-        if (!selected) return;
+        try { console.info("[Export] request-export received"); } catch {}
+        if (!selected) { try { console.warn("[Export] No selected media; aborting"); } catch {}; return; }
         // If a timeline item is selected, export that fence with overlapping media; otherwise fall back to single-clip trim export
         const selId = timeline.state.selectedItemId;
         const item = selId ? timeline.state.items.find(it => it.id === selId) : undefined;
@@ -294,6 +320,7 @@ const MediaLibrary: React.FC = () => {
                 align: it.overlayAlign ?? "center",
               };
             });
+          try { console.info("[Export] multi-track payload", { fenceStart, fenceEnd, videos: videos.length, audios: audios.length, overlays: overlays.length, resolution, normalizeEnabled, fadeInSec, fadeOutSec }); } catch {}
           await exportTimelineSegment({ fenceStart, fenceEnd, videos, audios, overlays, resolution, normalizeEnabled, fadeInSec, fadeOutSec });
           return;
         }
@@ -301,6 +328,7 @@ const MediaLibrary: React.FC = () => {
         const src = selected.path;
         const i = timeline.state.inPoint || 0;
         const o = timeline.state.outPoint || timeline.state.duration || 0;
+        try { console.info("[Export] single-track trim", { src, start: i, end: o }); } catch {}
         await exportTrim(src, i, o);
       };
       window.addEventListener("request-export", handler as EventListener);
@@ -412,7 +440,8 @@ const MediaLibrary: React.FC = () => {
                             const start = Math.max(0, timeline.state.currentTime || 0);
                             const mediaDur = Number(selected.duration ?? timeline.state.duration ?? 0) || 0;
                             const trimIn = 0;
-                            const len = Math.max(0.5, mediaDur > 0 ? Math.min(mediaDur, 5) : 5);
+                            // Default item length to the full media duration when known (prevents 5s cutouts)
+                            const len = Math.max(0.5, mediaDur > 0 ? mediaDur : 5);
                             const trimOut = Math.max(trimIn + len, len);
                             timeline.addItem({
                               id,
@@ -427,6 +456,19 @@ const MediaLibrary: React.FC = () => {
                           }}
                         >
                           Add
+                        </button>
+                        <button
+                          className={`px-2 py-1 rounded text-black text-xs ${timeline.state.selectedItemId ? "bg-red-300 hover:bg-red-400" : "bg-gray-300 opacity-60 cursor-not-allowed"}`}
+                          title="Remove selected timeline item (video or audio)"
+                          disabled={!timeline.state.selectedItemId}
+                          onClick={() => {
+                            const selId = timeline.state.selectedItemId;
+                            if (!selId) return;
+                            try { timeline.deleteItem(selId); } catch {}
+                            showToast("Removed item from timeline", "info", 1500);
+                          }}
+                        >
+                          Remove Selected
                         </button>
                       </>
                     );
@@ -488,7 +530,7 @@ const MediaLibrary: React.FC = () => {
             <StreamMixer />
             {error && <div className="text-xs text-red-400">Export error: {error}</div>}
             <Timeline />
-            <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+            <div className="mt-3 bg-gray-800 border border-gray-700 rounded-lg p-4">
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                 <div className="text-gray-400">Filename</div>
                 <div className="text-gray-200 truncate" title={selected.filename}>{selected.filename}</div>

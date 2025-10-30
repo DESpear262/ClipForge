@@ -28,15 +28,22 @@
    - Persistence via `timelineDoc` in project state
  - ✅ Transitions & Overlays (Preview)
    - Model and persistence for transitions (crossfade/fadeblack)
-   - Transition/Overlay menus; text overlays visible in preview
-   - TimelinePreview stacked players for crossfade; black overlay for fadeblack
+  - Transition/Overlay menus; text overlays visible in preview
+  - TimelinePreview: primary retains native controls; secondary shows as PiP; audio tracks play together
  - ✅ Recording UI (Right toolbar)
    - Recording tab with stacked controls; AI Tools tab placeholder
    - Mic preview/record stabilized; mic-only audio added to A1 at playhead
    - Backend ffmpeg stderr forwarded; args printed for diagnostics
   - Screen voiceover: reuse mic recorder; on stop, mux mic M4A + screen MP4 → `_vo.mp4`; auto-import
   - System audio level meter in Screen Record; hint when no loopback device
+  - Webcam card now shows live preview with red REC indicator while recording
+  - Modular Combined Recorder: shared hook context + PiP compose command (no separate device pickers)
  - ↩ Media Library tabs reverted: attempted Video/Audio tabs + audio import UI; rolled back to video-only library. Left code comment to revisit.
+ - ✅ Timeline item removal interactions
+   - Delete/Backspace removes the selected timeline item (video or audio)
+   - "Remove Selected" button in Right Panel removes current selection with toast feedback
+ - ✅ Timeline drag behavior
+   - Dragging items moves items between tracks/time; trim gates only move when dragging empty regions of the timeline
 
 ### Infrastructure
 - ✅ Tauri + React + Vite project initialized

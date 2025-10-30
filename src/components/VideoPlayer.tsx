@@ -33,9 +33,14 @@ interface VideoPlayerProps {
    * Playback volume 0..1. Defaults to 1.
    */
   volume?: number;
+  /**
+   * Optional callbacks for play/pause state changes of the native video.
+   */
+  onPlay?: () => void;
+  onPause?: () => void;
 }
 
-const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate, onReady, showControls = true, muted = false, volume = 1 }) => {
+const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate, onReady, showControls = true, muted = false, volume = 1, onPlay, onPause }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [, setIsPlaying] = useState(false);
   const [, setCurrentTime] = useState(0);
@@ -141,8 +146,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate, onReady, 
   /**
    * Handle video play/pause events
    */
-  const handlePlay = () => setIsPlaying(true);
-  const handlePause = () => setIsPlaying(false);
+  const handlePlay = () => { setIsPlaying(true); try { onPlay?.(); } catch {} };
+  const handlePause = () => { setIsPlaying(false); try { onPause?.(); } catch {} };
 
   /**
    * Handle video error

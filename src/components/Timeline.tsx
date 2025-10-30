@@ -6,6 +6,15 @@ import TrackLayer from "./Timeline/TrackLayer";
 /**
  * Konva-based multi-track timeline with grid, items, trim overlay, and playhead.
  *
+ * Zoom behavior:
+ * - Fully zoomed out fits the entire timeline duration in view.
+ * - Increasing zoom increases px/sec so the visible time window shrinks proportionally
+ *   (e.g., 2× zoom shows half the timeline length).
+ * - Maximum zoom clamps to a minimum visible window of MIN_WINDOW_SEC seconds.
+ * - If total duration ≤ MIN_WINDOW_SEC, zooming is disabled (no-op).
+ * - A field-of-view (FOV) slider pans the viewport across the timeline by adjusting
+ *   a left-edge time offset (`viewOffsetSec`).
+ *
  * Layering model (performance-optimized):
  * - Static layer (listening=false): background, grid lines/labels, track row backgrounds.
  * - Content layer: track items (via TrackLayer Groups), trim overlays/handles/tooltip, playhead.
@@ -24,6 +33,7 @@ const Timeline: React.FC = () => {
     setLoopTrim,
     moveItem,
     selectItem,
+    deleteItem,
   } = useTimeline();
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ width: number; height: number }>({ width: 800, height: 220 });
@@ -51,6 +61,12 @@ const Timeline: React.FC = () => {
   const timelineHeight = Math.max(size.height, tracksHeight + topPadding + bottomPadding);
   // total width coverage implicitly handled by grid/end calculation
 
+  // Minimum visible window (seconds) at maximum zoom
+  const MIN_WINDOW_SEC = 5;
+
+  // Viewport left-edge time (seconds). 0 means view from start of timeline.
+  const [viewOffsetSec, setViewOffsetSec] = useState(0);
+
   // Compute dynamic minimum px/sec so full video fits at min zoom
   const dynamicMinPps = useMemo(() => {
     const d = state.duration || 0;
@@ -58,12 +74,44 @@ const Timeline: React.FC = () => {
     return Math.max(1, timelineWidth / d);
   }, [timelineWidth, state.duration]);
 
-  // Ensure pxPerSecond is never below dynamic min (e.g., on resize or duration change)
+  // Compute dynamic maximum px/sec corresponding to the minimum visible window
+  const dynamicMaxPpsBase = useMemo(() => {
+    const denom = Math.max(0.001, MIN_WINDOW_SEC);
+    return Math.max(1, timelineWidth / denom);
+  }, [timelineWidth]);
+
+  // If duration ≤ MIN_WINDOW_SEC, zooming is effectively disabled
+  const canZoom = (state.duration || 0) > MIN_WINDOW_SEC;
+  const minPps = dynamicMinPps;
+  const maxPps = canZoom ? Math.max(dynamicMinPps, dynamicMaxPpsBase) : dynamicMinPps;
+
+  // Visible window (seconds) at current zoom
+  const visibleWindowSec = useMemo(() => {
+    const pps = state.pxPerSecond || 1;
+    return timelineWidth / pps;
+  }, [timelineWidth, state.pxPerSecond]);
+
+  // Clamp the viewport offset when zoom, width, or duration changes
   useEffect(() => {
-    if (state.pxPerSecond < dynamicMinPps) {
-      setPxPerSecond(dynamicMinPps);
+    const duration = state.duration || 0;
+    const maxOffset = Math.max(0, duration - visibleWindowSec);
+    if (!Number.isFinite(maxOffset) || maxOffset <= 0) {
+      if (viewOffsetSec !== 0) setViewOffsetSec(0);
+      return;
     }
-  }, [dynamicMinPps, state.pxPerSecond, setPxPerSecond]);
+    if (viewOffsetSec < 0 || viewOffsetSec > maxOffset) {
+      setViewOffsetSec(Math.max(0, Math.min(viewOffsetSec, maxOffset)));
+    }
+  }, [state.duration, visibleWindowSec, viewOffsetSec]);
+
+  // Ensure pxPerSecond stays within [minPps, maxPps] on resize/duration changes
+  useEffect(() => {
+    if (state.pxPerSecond < minPps) {
+      setPxPerSecond(minPps);
+    } else if (state.pxPerSecond > maxPps) {
+      setPxPerSecond(maxPps);
+    }
+  }, [minPps, maxPps, state.pxPerSecond, setPxPerSecond]);
 
   // Determine tick spacing based on zoom
   const { majorEverySec, minorEverySec } = useMemo(() => {
@@ -92,23 +140,25 @@ const Timeline: React.FC = () => {
   // Generate grid lines and labels
   const grid = useMemo(() => {
     const lines: { x: number; major: boolean; label?: string }[] = [];
-    const duration = state.duration || 0;
-    const end = Math.max(duration, timelineWidth / state.pxPerSecond);
+    const startT = Math.max(0, viewOffsetSec);
+    const endT = startT + visibleWindowSec;
     const addLines = (step: number, isMajor: boolean) => {
-      for (let t = 0; t <= end + 0.0001; t += step) {
-        const x = t * state.pxPerSecond;
+      if (step <= 0) return;
+      const first = Math.floor(startT / step) * step;
+      for (let t = first; t <= endT + 0.0001; t += step) {
+        const x = (t - viewOffsetSec) * state.pxPerSecond;
         lines.push({ x, major: isMajor, label: isMajor ? formatTime(t) : undefined });
       }
     };
     addLines(minorEverySec, false);
     addLines(majorEverySec, true);
     return lines;
-  }, [state.duration, state.pxPerSecond, majorEverySec, minorEverySec, timelineWidth]);
+  }, [state.pxPerSecond, majorEverySec, minorEverySec, timelineWidth, viewOffsetSec, visibleWindowSec]);
 
   // Trim and playhead geometry (global selection)
-  const inX = (state.inPoint || 0) * state.pxPerSecond;
-  const outX = (state.outPoint || 0) * state.pxPerSecond;
-  const playheadX = (state.currentTime || 0) * state.pxPerSecond;
+  const inX = ((state.inPoint || 0) - viewOffsetSec) * state.pxPerSecond;
+  const outX = ((state.outPoint || 0) - viewOffsetSec) * state.pxPerSecond;
+  const playheadX = ((state.currentTime || 0) - viewOffsetSec) * state.pxPerSecond;
 
   // Dragging state
   type DragMode = "none" | "in" | "out" | "move";
@@ -127,10 +177,10 @@ const Timeline: React.FC = () => {
   }, [state.pxPerSecond, playheadX]);
 
   const toTimeFromX = useCallback((x: number) => {
-    const clampedX = Math.max(0, Math.min(x, (state.duration || 0) * state.pxPerSecond));
-    const t = clampedX / state.pxPerSecond;
-    return Math.max(0, Math.min(t, state.duration || Number.MAX_SAFE_INTEGER));
-  }, [state.pxPerSecond, state.duration]);
+    const duration = state.duration || 0;
+    const t = x / state.pxPerSecond + viewOffsetSec;
+    return Math.max(0, Math.min(t, duration || Number.MAX_SAFE_INTEGER));
+  }, [state.pxPerSecond, state.duration, viewOffsetSec]);
 
   // Mouse interactions: handles, move, and seek
   const stageRef = useRef<any>(null);
@@ -240,7 +290,7 @@ const Timeline: React.FC = () => {
   }, [state.items]);
 
   const handleItemDragEnd = useCallback((id: string, absX: number, absY: number, altKey?: boolean) => {
-    const newStartSec = Math.max(0, absX / state.pxPerSecond);
+    const newStartSec = Math.max(0, viewOffsetSec + (absX / state.pxPerSecond));
     const snappedStart = snapTime(newStartSec, !!altKey);
     const toIdx = getTrackIndexFromY(absY);
     const toTrack = state.tracks[toIdx]?.id ?? state.tracks[0]?.id;
@@ -249,7 +299,7 @@ const Timeline: React.FC = () => {
     const len = Math.max(0.1, it.end - it.start);
     const clamped = clampNoOverlap(toTrack, id, snappedStart, len);
     moveItem(id, toTrack, clamped.start);
-  }, [state.pxPerSecond, state.tracks, state.items, snapTime, getTrackIndexFromY, clampNoOverlap, moveItem]);
+  }, [state.pxPerSecond, viewOffsetSec, state.tracks, state.items, snapTime, getTrackIndexFromY, clampNoOverlap, moveItem]);
 
   // Keyboard precision: when a handle was last active, arrows adjust
   const containerKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -262,6 +312,13 @@ const Timeline: React.FC = () => {
       if (dragMode === "out") setOutPoint((state.outPoint || 0) + step);
       else setInPoint((state.inPoint || 0) + step);
       e.preventDefault();
+    } else if (e.key === "Delete" || e.key === "Backspace") {
+      // Allow removing currently selected timeline item (videos or audio) via keyboard
+      const sel = state.selectedItemId;
+      if (sel) {
+        deleteItem(sel);
+        e.preventDefault();
+      }
     }
   }, [dragMode, setInPoint, setOutPoint, state.inPoint, state.outPoint]);
 
@@ -269,17 +326,42 @@ const Timeline: React.FC = () => {
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-3">
       <div className="flex items-center justify-between mb-2">
         <div className="text-xs text-gray-300">Timeline</div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">Zoom</span>
-          <input
-            type="range"
-            min={Math.max(1, Math.floor(dynamicMinPps))}
-            max={2000}
-            step={1}
-            value={state.pxPerSecond}
-            onChange={(e) => setPxPerSecond(Math.max(dynamicMinPps, Number(e.target.value)))}
-            className="w-40"
-          />
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">Zoom</span>
+            <input
+              type="range"
+              min={Math.max(1, Math.floor(minPps))}
+              max={Math.max(1, Math.ceil(maxPps))}
+              step={1}
+              value={state.pxPerSecond}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                const clamped = Math.max(minPps, Math.min(v, maxPps));
+                setPxPerSecond(clamped);
+              }}
+              disabled={!canZoom}
+              className="w-40"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">View</span>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, (state.duration || 0) - visibleWindowSec)}
+              step={0.01}
+              value={Math.max(0, Math.min(viewOffsetSec, Math.max(0, (state.duration || 0) - visibleWindowSec)))}
+              onChange={(e) => {
+                const duration = state.duration || 0;
+                const maxOffset = Math.max(0, duration - visibleWindowSec);
+                const v = Number(e.target.value);
+                setViewOffsetSec(Math.max(0, Math.min(v, maxOffset)));
+              }}
+              disabled={(state.duration || 0) <= visibleWindowSec}
+              className="w-48"
+            />
+          </div>
           <label className="text-xs text-gray-400 ml-3 flex items-center gap-1 select-none">
             <input type="checkbox" checked={!!state.loopTrim} onChange={(e) => setLoopTrim(e.target.checked)} />
             Loop trim
@@ -335,6 +417,7 @@ const Timeline: React.FC = () => {
                 height={rowHeight}
                 width={timelineWidth}
                 pxPerSecond={state.pxPerSecond}
+                viewOffsetSec={viewOffsetSec}
                 selectedItemId={state.selectedItemId}
                 onItemDragMove={() => { /* visual drag handled by Konva; snap on end */ }}
                 onItemDragEnd={(id, absX, absY) => handleItemDragEnd(id, absX, absY)}

@@ -35,6 +35,7 @@
 - ✅ System audio level meter in Screen Record (tries loopback-like audioinput); shows hint if unavailable
 - ✅ Allowlist update: enabled `tauri.path` for appDataDir
  - ✅ Allowlist update: enabled `fs.exists` to support post-record existence check before import
+- ✅ Timeline interaction fix: dragging items now moves items; trim gates move only when dragging empty timeline areas (stop event bubbling from item groups in Konva)
 - ✅ Timeline warning fix: defer `setClipTrim` via `queueMicrotask` to avoid cross-provider setState
 - ✅ PR #5 (Sprint 2 – Block B): Multi-track timeline infrastructure
   - Tracks: V1 (video), A1 (audio), O1 (overlay)
@@ -48,9 +49,20 @@
    - OverlayMenu to add text overlays on O1 with position/color/size
    - TimelinePreview stacks players to visualize crossfade; fade-to-black via black overlay
    - Overlays rendered as HTML in preview; persisted with timelineDoc
+  - Preview controls & PiP:
+    - Primary VideoPlayer retains native controls even with multiple timeline items
+    - Secondary video renders picture-in-picture (bottom-right); all audio tracks play in sync
+    - Playback/seek synchronized across primary, PiP, and audio with detailed logging
  - ↩ Media Library tabs reverted
    - Attempted Video/Audio tabs and audio library; reverted per product decision
    - Library now displays videos only; code comment left in `MediaLibrary.tsx` as breadcrumb to revisit later
+  - ✅ Timeline item removal: Delete/Backspace keyboard support and "Remove Selected" button in Right Panel to remove videos/audio from timeline
+ - ✅ Webcam UI: added live preview passthrough in `RightToolbar → Webcam` card with red "REC" dot overlay while recording
+ - ✅ Modular Multi-Stream Recorder: replaced monolithic combined path
+   - Added `RecordingProvider` to centralize mic/webcam/screen hooks so UI badges reflect shared state
+   - Combined recorder orchestrates: webcam (MediaRecorder), mic (MediaRecorder), screen (FFmpeg gdigrab)
+   - New backend `compose_pip_cmd` overlays webcam PiP over screen and uses mic as audio; avoids `export_timeline_segment_cmd`
+   - Combined UI has no device pickers; uses selections from individual mic/webcam panels; fails fast with toasts if not ready
 
 ## Active Development
 **PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅, PR #6 (Konva Timeline) ✅, PR #7 (Trim Handles) ✅, PR #8 (Export Pipeline) ✅, PR #5 (Sprint 2 Block B – Multi-track) ✅, PR #6 (Transitions & Overlays preview) ✅, PR #7 (Transcription) 🚧
@@ -139,7 +151,7 @@
 
 ### Known Gaps
 - Screen/window enumeration returns desktop only (Windows list pending)
-- Webcam: no progress events during transcode (fast for short clips)
+- Webcam: no progress events during transcode (fast for short clips); preview now visible, indicator added
 - System-audio loopback is device-dependent; explicit system-audio device selector is planned; without loopback, voiceover checkbox is the supported path
 
 ### Upcoming Challenges
