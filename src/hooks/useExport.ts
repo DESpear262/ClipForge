@@ -111,9 +111,9 @@ export const useExport = () => {
 
       await invoke("export_timeline_segment_cmd", {
         req: {
-          fenceStart: payload.fenceStart,
-          fenceEnd: payload.fenceEnd,
-          videos: payload.videos.map(v => ({ path: v.path, seek: v.seek, duration: v.duration, offset: v.offset, gain: v.gain, isBase: v.isBase })),
+          fence_start: payload.fenceStart,
+          fence_end: payload.fenceEnd,
+          videos: payload.videos.map(v => ({ path: v.path, seek: v.seek, duration: v.duration, offset: v.offset, gain: v.gain, is_base: v.isBase })),
           audios: payload.audios.map(a => ({ path: a.path, seek: a.seek, duration: a.duration, offset: a.offset, gain: a.gain })),
           overlays: payload.overlays.map(o => ({ text: o.text, offset: o.offset, duration: o.duration, x: o.x, y: o.y, font_size: o.fontSize, color: o.color, align: o.align })),
           resolution: payload.resolution ?? "source",
@@ -122,7 +122,7 @@ export const useExport = () => {
           normalize_true_peak: -1.0,
           fade_in_sec: payload.fadeInSec ?? 0,
           fade_out_sec: payload.fadeOutSec ?? 0,
-          outputPath,
+          output_path: outputPath,
         }
       });
       return true;

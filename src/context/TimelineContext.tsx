@@ -163,6 +163,15 @@ export const TimelineProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const clipId = prev.activeClipId;
         queueMicrotask(() => setClipTrim(clipId, i, o));
       }
+      // If currentTime lies outside new [i, o], snap to i and request a media seek
+      const outside = (prev.currentTime < i) || (prev.currentTime > o);
+      if (outside) {
+        queueMicrotask(() => {
+          const fn = seekHandlerRef.current;
+          if (fn) fn(i);
+        });
+        return { ...prev, inPoint: i, outPoint: o, currentTime: i };
+      }
       return { ...prev, inPoint: i, outPoint: o };
     });
   }, [setClipTrim]);

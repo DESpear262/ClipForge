@@ -514,6 +514,18 @@ pub struct ExportTimelineRequest {
 
 /// Export a composed timeline segment to MP4 with progress events.
 pub async fn export_timeline_segment(app: &AppHandle, req: ExportTimelineRequest) -> Result<()> {
+    println!(
+        "[export_timeline_segment] req: fence=[{:.3},{:.3}] videos={} audios={} overlays={} res={:?}",
+        req.fence_start, req.fence_end, req.videos.len(), req.audios.len(), req.overlays.len(), req.resolution
+    );
+    // Emit structured info to frontend
+    app.emit_all("export:graph", serde_json::json!({
+        "fence": {"start": req.fence_start, "end": req.fence_end},
+        "videos": req.videos.iter().map(|v| serde_json::json!({"path": v.path, "seek": v.seek, "dur": v.duration, "offset": v.offset, "isBase": v.is_base})).collect::<Vec<_>>(),
+        "audios": req.audios.iter().map(|a| serde_json::json!({"path": a.path, "seek": a.seek, "dur": a.duration, "offset": a.offset})).collect::<Vec<_>>(),
+        "overlays": req.overlays.iter().map(|o| serde_json::json!({"text": o.text, "offset": o.offset, "dur": o.duration})).collect::<Vec<_>>(),
+        "resolution": req.resolution,
+    })).ok();
     let ffmpeg_path = app
         .path_resolver()
         .resolve_resource("bin/ffmpeg.exe")
@@ -563,10 +575,18 @@ pub async fn export_timeline_segment(app: &AppHandle, req: ExportTimelineRequest
     for (i, v) in req.videos.iter().enumerate() {
         if i == base_idx { continue; }
         let offset = v.offset.max(0.0);
-        // Shift overlay stream forward by offset seconds
+        // Shift overlay stream forward by offset seconds, scale to PiP, place bottom-right
+        // Use scale2ref to size overlay relative to current base frame size
         filter.push_str(&format!(
-            "[vv{idx}]setpts=PTS+{ofs}/TB[ov{idx}];[vcur][ov{idx}]overlay=shortest=1:eof_action=pass[vcur];",
-            idx=i, ofs=offset));
+            "[vv{idx}]setpts=PTS+{ofs}/TB[ov{idx}];" // time shift
+        , idx=i, ofs=offset));
+        // Scale overlay to ~28% width of base (even dimensions), then overlay at bottom-right with 12px margin
+        filter.push_str(&format!(
+            "[ov{idx}][vcur]scale2ref=w=trunc(iw*0.28/2)*2:h=trunc(ih*0.28/2)*2[ovS{idx}][ref{idx}];" 
+            , idx=i));
+        filter.push_str(&format!(
+            "[vcur][ovS{idx}]overlay=shortest=0:eof_action=pass:x=main_w-overlay_w-12:y=main_h-overlay_h-12[vcur];",
+            idx=i));
     }
 
     // Apply text overlays (drawtext) in sequence
@@ -588,25 +608,15 @@ pub async fn export_timeline_segment(app: &AppHandle, req: ExportTimelineRequest
         }
     }
 
-    // Final video label
-    filter.push_str("[vcur]trim=duration=1e9[vout];"); // harmless no-op trim to close chain
+    // Final video label: use current composed video as output label
+    // Avoid injecting an invalid trim; map [vcur] directly
 
     // Prepare audio streams: delay + gain, then mix
     let mut audio_input_count = 0usize;
     let mut audio_labels: Vec<String> = Vec::new();
 
-    // Audio from video inputs first
-    for (i, v) in req.videos.iter().enumerate() {
-        // Map input index i to audio stream label
-        let off_ms = (v.offset.max(0.0) * 1000.0).round() as i64;
-        let gain = v.gain.unwrap_or(1.0).max(0.0);
-        let lbl = format!("av{}", i);
-        filter.push_str(&format!(
-            "[{idx}:a]asetpts=PTS-STARTPTS,adelay={ms}|{ms},volume={gain}[{lbl}];",
-            idx=i, ms=off_ms, gain=gain, lbl=lbl));
-        audio_labels.push(lbl);
-        audio_input_count += 1;
-    }
+    // NOTE: Do NOT assume video inputs have audio; referencing [i:a] will fail if absent.
+    // Video-related audio is omitted here to avoid filtergraph errors. Use explicit `audios` list only.
     // Then dedicated audio inputs (they come after video inputs in ffmpeg command)
     for (k, a) in req.audios.iter().enumerate() {
         let input_idx = req.videos.len() + k;
@@ -614,8 +624,8 @@ pub async fn export_timeline_segment(app: &AppHandle, req: ExportTimelineRequest
         let gain = a.gain.unwrap_or(1.0).max(0.0);
         let lbl = format!("aa{}", k);
         filter.push_str(&format!(
-            "[{idx}:a]asetpts=PTS-STARTPTS,adelay={ms}|{ms},volume={gain}[{lbl}];",
-            idx=input_idx, ms=off_ms, gain=gain, lbl=lbl));
+            "[{idx}:a]asetpts=PTS-STARTPTS,adelay={ms}|{ms},volume={gain},atrim=duration={dur},apad[{lbl}];",
+            idx=input_idx, ms=off_ms, gain=gain, dur=fence_len, lbl=lbl));
         audio_labels.push(lbl);
         audio_input_count += 1;
     }
@@ -664,6 +674,12 @@ pub async fn export_timeline_segment(app: &AppHandle, req: ExportTimelineRequest
         filter.push_str(&format!("{src}afade=t=out:st={:.3}:d={:.3}[a_fo];", st, fout, src = audio_map));
         audio_map = String::from("[a_fo]");
     }
+    // Cap audio to fence length to avoid infinite padding from apad
+    filter.push_str(&format!("{src}atrim=duration={:.3},asetpts=PTS-STARTPTS[a_cap];", fence_len.max(0.0), src = audio_map));
+    audio_map = String::from("[a_cap]");
+
+    // Cap video to fence length explicitly and hand off to a final label
+    filter.push_str(&format!("[vcur]trim=duration={:.3}[vout];", fence_len.max(0.0)));
 
     // Optional scaling on final video
     let mut map_video = String::from("[vout]");
@@ -680,7 +696,7 @@ pub async fn export_timeline_segment(app: &AppHandle, req: ExportTimelineRequest
     }
 
     // Assemble command args
-    cmd.arg("-filter_complex").arg(filter)
+    cmd.arg("-filter_complex").arg(&filter)
         .arg("-map").arg(map_video)
         .arg("-map").arg(audio_map)
         .arg("-c:v").arg("libx264")
@@ -697,10 +713,33 @@ pub async fn export_timeline_segment(app: &AppHandle, req: ExportTimelineRequest
         .stderr(std::process::Stdio::null());
 
     println!("[export_timeline_segment] launching ffmpeg");
+    // Debug: print filter graph (full arg introspection not available on tokio::process::Command)
+    println!("[export_timeline_segment] filter_complex: {}", filter);
+
+    // Route stderr for diagnostics
+    cmd.stderr(std::process::Stdio::piped());
+
     let mut child = cmd.spawn().context("Failed to spawn ffmpeg timeline export")?;
 
     let stdout = child.stdout.take().context("Missing stdout pipe")?;
     let mut reader = BufReader::new(stdout).lines();
+
+    // Read stderr concurrently and forward as events for diagnosis
+    if let Some(stderr) = child.stderr.take() {
+        let app_clone = app.clone();
+        tokio::spawn(async move {
+            let mut r = BufReader::new(stderr).lines();
+            loop {
+                match r.next_line().await {
+                    Ok(Some(line)) => {
+                        let _ = app_clone.emit_all("export:stderr", serde_json::json!({ "line": line }));
+                    }
+                    Ok(None) => break,
+                    Err(_) => break,
+                }
+            }
+        });
+    }
 
     app.emit_all("export:start", serde_json::json!({ "outputPath": req.output_path }))
         .ok();
@@ -719,7 +758,9 @@ pub async fn export_timeline_segment(app: &AppHandle, req: ExportTimelineRequest
 
     let status = child.wait().await?;
     if !status.success() {
-        anyhow::bail!("ffmpeg timeline export failed with status: {}", status);
+        let msg = format!("ffmpeg timeline export failed with status: {}", status);
+        app.emit_all("export:error", serde_json::json!({ "message": msg })).ok();
+        anyhow::bail!("{}", msg);
     }
 
     app.emit_all("export:success", serde_json::json!({ "outputPath": req.output_path }))
@@ -762,6 +803,82 @@ pub async fn transcode_recording_to_mp4(
         anyhow::bail!("ffmpeg transcode failed: {}", stderr);
     }
 
+    Ok(())
+}
+
+/// Compose a PiP video by overlaying `overlay_video_path` on top of `base_video_path` and
+/// optionally using `audio_path` as the master audio. Produces an MP4 (H.264/AAC).
+pub async fn compose_pip(
+    app: &tauri::AppHandle,
+    base_video_path: &str,
+    overlay_video_path: &str,
+    audio_path: Option<&str>,
+    corner: Option<&str>, // "br"|"bl"|"tr"|"tl"
+    pip_width_px: Option<u32>,
+    margin_px: Option<u32>,
+    output_path: &str,
+) -> Result<()> {
+    let ffmpeg_path = app
+        .path_resolver()
+        .resolve_resource("bin/ffmpeg.exe")
+        .context("Failed to resolve ffmpeg path")?;
+    if !ffmpeg_path.exists() {
+        anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
+    }
+
+    let pip_w = pip_width_px.unwrap_or(480);
+    let margin = margin_px.unwrap_or(16);
+    let c = corner.unwrap_or("br");
+    let x_expr = match c {
+        "bl" => format!("{}", margin),
+        "tr" => format!("W-w-{}", margin),
+        "tl" => format!("{}", margin),
+        _ => format!("W-w-{}", margin), // br
+    };
+    let y_expr = match c {
+        "tr" => format!("{}", margin),
+        "tl" => format!("{}", margin),
+        _ => format!("H-h-{}", margin),
+    };
+
+    // Build filter: scale overlay to pip_w, add simple 2px border pad, overlay onto base
+    let filter = format!(
+        "[1:v]scale={}: -1,format=rgba,pad=iw+4:ih+4:2:2:black[cam];[0:v][cam]overlay=x={}:y={}[vout]",
+        pip_w, x_expr, y_expr
+    );
+
+    let mut cmd = Command::new(&ffmpeg_path);
+    cmd.arg("-i").arg(base_video_path)
+        .arg("-i").arg(overlay_video_path);
+    if let Some(a) = audio_path.as_ref() { cmd.arg("-i").arg(a); }
+
+    cmd.arg("-filter_complex").arg(&filter)
+        .arg("-map").arg("[vout]")
+        .arg("-c:v").arg("libx264")
+        .arg("-preset").arg("veryfast")
+        .arg("-crf").arg("23")
+        .arg("-pix_fmt").arg("yuv420p");
+
+    if audio_path.is_some() {
+        // Map mic audio; if present as third input, it is index 2
+        cmd.arg("-map").arg("2:a:0")
+            .arg("-c:a").arg("aac")
+            .arg("-b:a").arg("160k");
+    }
+
+    cmd.arg("-shortest")
+        .arg("-movflags").arg("+faststart")
+        .arg("-y")
+        .arg(output_path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped());
+
+    println!("[compose_pip] filter_complex: {}", filter);
+    let output = cmd.output().await.context("Failed to execute ffmpeg compose_pip")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("compose_pip failed: {}", stderr);
+    }
     Ok(())
 }
 
