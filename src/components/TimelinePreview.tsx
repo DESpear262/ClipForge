@@ -89,16 +89,16 @@ const showSecondary = transition && (transition.type === "crossfade") && blend >
   useEffect(() => {
     if (!primaryApiRef.current) return;
     const seek = (t: number) => {
-      const mediaT = computeMediaTime(current, t);
+      const mediaT = computeMediaTime(baseVideo as any, t);
       try { primaryApiRef.current?.seek(mediaT); } catch {}
-      if (secondaryApiRef.current && next) {
-        const nT = computeMediaTime(next, t);
+      if (secondaryApiRef.current && overlayVideo) {
+        const nT = computeMediaTime(overlayVideo as any, t);
         try { secondaryApiRef.current.seek(nT); } catch {}
       }
     };
     timeline.registerSeekHandler(seek);
     return () => timeline.registerSeekHandler(undefined);
-  }, [current?.id, next?.id, timeline.registerSeekHandler]);
+  }, [baseVideo?.id, overlayVideo?.id, timeline.registerSeekHandler]);
 
   // Keep timeline duration in sync with composition (max end of video items)
   useEffect(() => {
