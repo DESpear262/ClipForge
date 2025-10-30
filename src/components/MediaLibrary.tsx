@@ -210,6 +210,32 @@ const MediaLibrary: React.FC = () => {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isExporting, progress?.percent]);
 
+    // PR #9: Apply highlight globally when backend signals success
+    useEffect(() => {
+      let unlisten: any;
+      (async () => {
+        try {
+          const { listen } = await import("@tauri-apps/api/event");
+          unlisten = await listen("ai:highlight:success", (e: any) => {
+            const mid = Number(e?.payload?.mediaId ?? -1);
+            if (!selected || Number(selected.id) !== mid) return;
+            const s = Number(e?.payload?.start ?? 0);
+            const ed = Number(e?.payload?.end ?? 0);
+            const start = isFinite(s) ? s : 0;
+            const end = isFinite(ed) ? ed : (timeline.state.duration || 0);
+            // Apply globally: set trim range and enable loop
+            timeline.setTrimRange(start, end);
+            timeline.setLoopTrim(true);
+            try { playerApiRef.current?.seek(start); } catch {}
+            showToast("Highlight applied", "success", 2500);
+          });
+        } catch (e) {
+          console.warn("Failed to listen for ai:highlight:success", e);
+        }
+      })();
+      return () => { try { unlisten && unlisten(); } catch {} };
+    }, [selected?.id, timeline.state.duration]);
+
     // Handle MenuBar request-export events and fire export for current selection
     useEffect(() => {
       const handler = async () => {

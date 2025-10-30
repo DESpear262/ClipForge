@@ -36,8 +36,29 @@ const ToolsPanel: React.FC<ToolsPanelProps> = ({ selected }) => {
   const [hlStart, setHlStart] = useState<number | null>(null);
   const [hlEnd, setHlEnd] = useState<number | null>(null);
   const workingIdRef = useRef<number | null>(null);
+  const [hasKey, setHasKey] = useState<boolean>(true);
+  const [online, setOnline] = useState<boolean>(true);
+  const [hasTranscript, setHasTranscript] = useState<boolean>(false);
+  const [hasHighlight, setHasHighlight] = useState<boolean>(false);
+  const [aiLog, setAiLog] = useState<string[]>([]);
 
   const canTranscribe = useMemo(() => !!selected && stage !== "extract" && stage !== "upload" && stage !== "save", [selected, stage]);
+
+  // Preflight check: API key presence and basic connectivity; reset indicators on selection change
+  useEffect(() => {
+    (async () => {
+      try {
+        const { invoke } = await import("@tauri-apps/api/tauri");
+        const res = await invoke<{ hasKey: boolean; online: boolean }>("ai_preflight_cmd");
+        setHasKey(!!res?.hasKey);
+        setOnline(!!res?.online);
+      } catch {
+        setOnline(false);
+      }
+    })();
+    setHasTranscript(false);
+    setHasHighlight(false);
+  }, [selected?.id]);
 
   useEffect(() => {
     let unlistenStart: any;
@@ -68,6 +89,14 @@ const ToolsPanel: React.FC<ToolsPanelProps> = ({ selected }) => {
             setStage("done");
             setOutputPath(e?.payload?.outputPath || null);
             workingIdRef.current = null;
+            setHasTranscript(true);
+            const elapsed = e?.payload?.elapsedMs;
+            const model = e?.payload?.model;
+            const dur = e?.payload?.duration;
+            setAiLog((prev) => [
+              `Transcribed (${model || 'whisper'}): ${typeof elapsed === 'number' ? elapsed + 'ms' : ''} ${typeof dur === 'number' ? 'dur=' + dur.toFixed(2) + 's' : ''}`.trim(),
+              ...prev
+            ].slice(0, 10));
             // Load transcript JSON and extract segments for simple rendering
             try {
               const { readTextFile } = await import("@tauri-apps/api/fs");
@@ -101,6 +130,11 @@ const ToolsPanel: React.FC<ToolsPanelProps> = ({ selected }) => {
             const ed = Number(e?.payload?.end ?? 0);
             setHlStart(isFinite(s) ? s : 0);
             setHlEnd(isFinite(ed) ? ed : 0);
+            setHasHighlight(true);
+            setAiLog((prev) => [
+              `Highlight: ${isFinite(s) ? s.toFixed(2) : '?' }–${ isFinite(ed) ? ed.toFixed(2) : '?' }`,
+              ...prev
+            ].slice(0, 10));
           }
         });
       } catch (e) {
@@ -162,19 +196,25 @@ const ToolsPanel: React.FC<ToolsPanelProps> = ({ selected }) => {
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3" aria-live="polite" role="status">
       <div className="text-sm font-semibold text-gray-200">AI Tools</div>
+      <div className="flex items-center gap-2 text-xs">
+        {hasTranscript && <span className="px-2 py-0.5 rounded bg-green-700 text-green-100">Transcribed</span>}
+        {hasHighlight && <span className="px-2 py-0.5 rounded bg-purple-700 text-purple-100">Highlight ready</span>}
+        {!hasKey && <span className="px-2 py-0.5 rounded bg-red-800 text-red-200">API key missing</span>}
+        {!online && <span className="px-2 py-0.5 rounded bg-red-800 text-red-2 00">Offline</span>}
+      </div>
       <button
         onClick={onTranscribe}
-        disabled={!canTranscribe}
-        className={`px-3 py-2 rounded text-sm font-medium ${canTranscribe ? "bg-blue-500 hover:bg-blue-600 text-white" : "bg-gray-700 text-gray-400"}`}
+        disabled={!canTranscribe || !hasKey || !online}
+        className={`px-3 py-2 rounded text-sm font-medium ${canTranscribe && hasKey && online ? "bg-blue-500 hover:bg-blue-600 text-white" : "bg-gray-700 text-gray-400"}`}
       >
         Transcribe Audio
       </button>
       <button
         onClick={onFindHighlight}
-        disabled={!selected}
-        className={`px-3 py-2 rounded text-sm font-medium ${selected ? "bg-purple-500 hover:bg-purple-600 text-white" : "bg-gray-700 text-gray-400"}`}
+        disabled={!selected || !hasTranscript || !hasKey || !online}
+        className={`px-3 py-2 rounded text-sm font-medium ${selected && hasTranscript && hasKey && online ? "bg-purple-500 hover:bg-purple-600 text-white" : "bg-gray-700 text-gray-400"}`}
       >
         Find Highlights
       </button>
@@ -202,7 +242,16 @@ const ToolsPanel: React.FC<ToolsPanelProps> = ({ selected }) => {
           <div className="text-xs text-gray-400">Suggested highlight:</div>
           <div className="text-xs text-gray-200">{hlStart.toFixed(2)} – {hlEnd.toFixed(2)} s</div>
           <div className="mt-2">
-            <button onClick={onPreview} className="px-3 py-1 rounded bg-gray-700 text-gray-200 text-xs hover:bg-gray-600">Preview</button>
+            <button onClick={onPreview} className="px-3 py-1 rounded bg-gray-700 text-gray-200 text-xs hover:bg-gray-600 mr-2">Preview</button>
+            <button onClick={async () => { try { await navigator.clipboard.writeText(`${hlStart?.toFixed(2)}\t${hlEnd?.toFixed(2)}`); } catch {} }} className="px-3 py-1 rounded bg-gray-700 text-gray-200 text-xs hover:bg-gray-600">Copy timestamps</button>
+          </div>
+        </div>
+      )}
+      {aiLog.length > 0 && (
+        <div className="mt-3">
+          <div className="text-xs text-gray-400 mb-1">AI Log</div>
+          <div className="flex flex-col gap-1 max-h-32 overflow-y-auto text-xs text-gray-300">
+            {aiLog.map((l, i) => <div key={i}>{l}</div>)}
           </div>
         </div>
       )}

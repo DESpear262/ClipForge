@@ -106,7 +106,7 @@ struct ChatChoice { message: ChatResponseMessage }
 struct ChatResponseMessage { content: String }
 
 async fn call_llm(api_key: &str, segments: &[TranscriptSegment], duration: f64) -> Result<ToolCall> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)).build()?;
     // Reduce payload: map to minimal array
     let compact: Vec<serde_json::Value> = segments
         .iter()
@@ -136,19 +136,35 @@ async fn call_llm(api_key: &str, segments: &[TranscriptSegment], duration: f64) 
         response_format: serde_json::json!({ "type": "json_object" }),
     };
 
-    let resp = client
-        .post("https://api.openai.com/v1/chat/completions")
-        .bearer_auth(api_key)
-        .json(&req)
-        .send()
-        .await
-        .context("OpenAI highlight request failed")?;
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("OpenAI error {}: {}", status, text);
-    }
-    let body: ChatResponse = resp.json().await.context("Invalid chat JSON")?;
+    // Simple retry loop on 429/5xx
+    let mut last_err: Option<anyhow::Error> = None;
+    let body: ChatResponse = {
+        let mut out: Option<ChatResponse> = None;
+        for (i, backoff_ms) in [0u64, 250, 1000].iter().enumerate() {
+            if i > 0 { std::thread::sleep(std::time::Duration::from_millis(*backoff_ms)); }
+            match client
+                .post("https://api.openai.com/v1/chat/completions")
+                .bearer_auth(api_key)
+                .json(&req)
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    if resp.status().is_success() {
+                        let parsed: ChatResponse = resp.json().await.context("Invalid chat JSON")?;
+                        out = Some(parsed);
+                        break;
+                    } else if !(resp.status().as_u16() == 429 || resp.status().is_server_error()) {
+                        let status = resp.status();
+                        let text = resp.text().await.unwrap_or_default();
+                        return Err(anyhow::anyhow!("OpenAI error {}: {}", status, text));
+                    }
+                }
+                Err(e) => { last_err = Some(e.into()); }
+            }
+        }
+        out.ok_or_else(|| last_err.unwrap_or_else(|| anyhow::anyhow!("OpenAI highlight request failed")))?
+    };
     let content = body
         .choices
         .get(0)

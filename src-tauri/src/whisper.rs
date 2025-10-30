@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::Read, path::PathBuf};
 use tauri::{AppHandle, Manager};
-use tokio::process::Command;
+use tokio::{process::Command, time::{sleep, Duration}};
 
 /// Basic readme: Whisper transcription (OpenAI API) integration
 ///
@@ -76,7 +76,7 @@ async fn extract_wav_mono_16k(app: &AppHandle, input_path: &str, out_path: &str)
 
 /// Call OpenAI Whisper transcription API with multipart form upload.
 async fn openai_transcribe_wav(api_key: &str, wav_path: &str) -> Result<serde_json::Value> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(45)).build()?;
     let url = "https://api.openai.com/v1/audio/transcriptions";
 
     // Read file bytes
@@ -96,22 +96,31 @@ async fn openai_transcribe_wav(api_key: &str, wav_path: &str) -> Result<serde_js
         .text("timestamp_granularities[]", "word")
         .part("file", part);
 
-    let resp = client
-        .post(url)
-        .bearer_auth(api_key)
-        .multipart(form)
-        .send()
-        .await
-        .context("OpenAI request failed")?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("OpenAI error {}: {}", status, text);
+    // Simple retry: 2 attempts on 429/5xx
+    let mut last_err: Option<anyhow::Error> = None;
+    for (i, backoff_ms) in [0u64, 250, 1000].iter().enumerate() {
+        if i > 0 { sleep(Duration::from_millis(*backoff_ms)).await; }
+        match client
+            .post(url)
+            .bearer_auth(api_key)
+            .multipart(form.clone())
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    let json: serde_json::Value = resp.json().await.context("Invalid OpenAI JSON")?;
+                    return Ok(json);
+                } else if !(resp.status().as_u16() == 429 || resp.status().is_server_error()) {
+                    let status = resp.status();
+                    let text = resp.text().await.unwrap_or_default();
+                    return Err(anyhow::anyhow!("OpenAI error {}: {}", status, text));
+                }
+            }
+            Err(e) => { last_err = Some(e.into()); }
+        }
     }
-
-    let json: serde_json::Value = resp.json().await.context("Invalid OpenAI JSON")?;
-    Ok(json)
+    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("OpenAI request failed")))
 }
 
 /// Persist the transcript JSON under app_data_dir()/transcripts/<media_id>.json
@@ -150,6 +159,7 @@ pub async fn transcribe_media(
 
     let api_key = std::env::var("OPENAI_API_KEY").context("OPENAI_API_KEY not set")?;
     app.emit_all("transcript:progress", serde_json::json!({ "mediaId": media_id, "stage": "upload" })).ok();
+    let start_at = std::time::Instant::now();
     let raw = openai_transcribe_wav(&api_key, &wav_path.to_string_lossy()).await?;
 
     // Build normalized JSON envelope
@@ -190,7 +200,10 @@ pub async fn transcribe_media(
 
     app.emit_all("transcript:progress", serde_json::json!({ "mediaId": media_id, "stage": "save" })).ok();
     let out_path = persist_transcript(app, media_id, &out)?;
-    app.emit_all("transcript:success", serde_json::json!({ "mediaId": media_id, "outputPath": out_path })).ok();
+    // Cleanup temp WAV on success
+    let _ = std::fs::remove_file(&wav_path);
+    let elapsed_ms = start_at.elapsed().as_millis() as u64;
+    app.emit_all("transcript:success", serde_json::json!({ "mediaId": media_id, "outputPath": out_path, "model": out.model, "duration": out.duration, "elapsedMs": elapsed_ms })).ok();
     Ok(out_path)
 }
 

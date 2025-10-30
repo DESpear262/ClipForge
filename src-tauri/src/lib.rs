@@ -77,6 +77,7 @@ pub fn run() {
       save_project_state
       , transcribe_media_cmd
       , find_highlight_cmd
+      , ai_preflight_cmd
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
@@ -556,4 +557,13 @@ async fn find_highlight_cmd(
     Ok((start, end, path)) => Ok(serde_json::json!({ "start": start, "end": end, "path": path })),
     Err(e) => Err(format!("Highlight failed: {}", e)),
   }
+}
+
+/// AI preflight: check key presence and basic internet connectivity
+#[tauri::command]
+async fn ai_preflight_cmd() -> Result<serde_json::Value, String> {
+  let has_key = std::env::var("OPENAI_API_KEY").ok().filter(|s| !s.is_empty()).is_some();
+  let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(3)).build().map_err(|e| e.to_string())?;
+  let online = client.get("https://api.openai.com").send().await.map(|r| r.status().is_success() || r.status().as_u16() >= 400).unwrap_or(false);
+  Ok(serde_json::json!({ "hasKey": has_key, "online": online }))
 }

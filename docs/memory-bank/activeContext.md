@@ -98,6 +98,18 @@
   - Events: `ai:highlight:start|success|error`
   - Frontend: AI Tools panel adds "Find Highlights" and renders suggested range; Preview button seeks to start (no trim changes yet)
 
+- 🚧 PR #9: Trim Handle Application
+  - Always apply globally per product decision
+  - Frontend listens for `ai:highlight:success` and sets timeline trim range and loop toggle
+  - Auto-seek to start; persistence handled by existing save effect (`trimsByPath`)
+
+### QA & Polish (PR #10)
+- CSP updated to allow `https://api.openai.com` in `connect-src`
+- Backend `ai_preflight_cmd` checks API key presence and connectivity
+- Timeouts/retries: Whisper (45s, 2 retries), Highlight (15s, 2 retries)
+- Temp WAV cleaned up after successful transcription
+- AI Tools UI: preflight-gated buttons, badges (Transcribed/Highlight), AI log, copy timestamps, ARIA live
+
 ### Next Immediate Steps
 1. Complete PR #7 (Transcription): finalize Whisper API path and segment viewer polish
 2. Start PR #8 (Highlight Extraction): GPT-4o-mini tool call and schema validation
