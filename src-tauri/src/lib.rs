@@ -8,7 +8,7 @@ mod whisper;
 mod highlight;
 use serde::{Deserialize, Serialize};
 
-use ffmpeg::{probe_metadata, export_trim, transcode_recording_to_mp4, transcode_audio_to_m4a, mux_video_audio};
+use ffmpeg::{probe_metadata, export_trim, transcode_recording_to_mp4, transcode_audio_to_m4a, mux_video_audio, compose_pip};
 use tauri::Manager;
 use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
@@ -65,6 +65,7 @@ pub fn run() {
       start_combined_recording_cmd,
       transcode_audio,
       mux_video_audio_cmd,
+      compose_pip_cmd,
       transcode_recording,
       open_file_dialog,
       import_video,
@@ -475,6 +476,37 @@ async fn mux_video_audio_cmd(app: tauri::AppHandle, video_path: String, audio_pa
     .await
     .map_err(|e| format!("Mux failed: {}", e))?;
   Ok(output_path)
+}
+
+/// Compose PiP from base + overlay (+ optional mic) into a final MP4.
+#[tauri::command]
+async fn compose_pip_cmd(
+  app: tauri::AppHandle,
+  base_video_path: String,
+  overlay_video_path: String,
+  audio_path: Option<String>,
+  corner: Option<String>,
+  pip_width_px: Option<u32>,
+  margin_px: Option<u32>,
+) -> Result<String, String> {
+  let out = {
+    // Default output next to base video with suffix
+    let base = std::path::Path::new(&base_video_path);
+    let parent = base.parent().ok_or("Invalid base path")?;
+    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+    parent.join(format!("{}_pip.mp4", stem)).to_string_lossy().to_string()
+  };
+  compose_pip(
+    &app,
+    &base_video_path,
+    &overlay_video_path,
+    audio_path.as_deref(),
+    corner.as_deref(),
+    pip_width_px,
+    margin_px,
+    &out,
+  ).await.map_err(|e| format!("Compose failed: {}", e))?;
+  Ok(out)
 }
 
 /// Persisted project state structure

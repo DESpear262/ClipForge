@@ -1,52 +1,71 @@
-import React, { useEffect, useState } from "react";
-import { useCombinedRecorder } from "../../hooks/useCombinedRecorder";
+import React, { useState } from "react";
+import { useRecording } from "../../context/RecordingContext";
 import { importVideo } from "../../utils/api";
+import { useToastContext } from "../../context/ToastContext";
+import { invoke } from "@tauri-apps/api/tauri";
 
-// CombinedRecorder: Start/Stop a session that overlays webcam PiP onto screen with optional mic
+// CombinedRecorder (modular): orchestrates screen + webcam + mic using shared context
+// No device pickers here—uses the selections made in the individual mic/cam panels (previews must be active)
 const CombinedRecorder: React.FC = () => {
-  const { state, listVideoDevices, listAudioDevices, start, stop, prettyElapsed } = useCombinedRecorder();
-  const [cams, setCams] = useState<string[]>([]);
-  const [mics, setMics] = useState<string[]>([]);
-  const [cam, setCam] = useState<string>("");
-  const [mic, setMic] = useState<string>("");
+  const { screen, webcam, mic } = useRecording();
+  const { showToast } = useToastContext();
   const [fps, setFps] = useState<number>(60);
   const [corner, setCorner] = useState<"br"|"bl"|"tr"|"tl">("br");
   const [pip, setPip] = useState<number>(480);
   const [margin, setMargin] = useState<number>(16);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      setCams(await listVideoDevices());
-      setMics(await listAudioDevices());
-    })();
-  }, [listVideoDevices, listAudioDevices]);
-
-  useEffect(() => { if (!cam && cams[0]) setCam(cams[0]); }, [cams, cam]);
-  useEffect(() => { if (!mic && mics[0]) setMic(mics[0]); }, [mics, mic]);
-
   const handleStart = async () => {
-    if (busy || state.isRecording || !cam) return;
+    if (busy || screen.state.isRecording) return;
+    // Validate mic + webcam previews are active; if not, fail without starting
+    if (!mic.state.stream) {
+      showToast("Microphone not ready. Open the Microphone panel and start preview.", "error", 4000);
+      return;
+    }
+    if (!webcam.state.previewStream) {
+      showToast("Webcam not ready. Open the Webcam panel and start preview.", "error", 4000);
+      return;
+    }
     setBusy(true);
     try {
-      const out = await start({ fps, webcamDevice: cam, audioDevice: mic || undefined, corner, pipWidthPx: pip, marginPx: margin });
-      return out;
+      await webcam.start();
+      await mic.startRecording();
+      await screen.start({ fps });
+    } catch (e) {
+      showToast("Failed to start combined recording.", "error", 4000);
+      try { if (webcam.state.isRecording) await webcam.stop(); } catch {}
+      try { if (mic.state.isRecording) await mic.stopRecording(); } catch {}
     } finally {
       setBusy(false);
     }
   };
+
   const handleStop = async () => {
-    if (busy || !state.isRecording) return;
+    if (busy || !screen.state.isRecording) return;
     setBusy(true);
     try {
-      const out = await stop();
-      if (out) {
-        try {
-          const media = await importVideo(out);
-          const ev = new CustomEvent("media-imported", { detail: media });
-          window.dispatchEvent(ev);
-        } catch {}
+      const screenOut = await screen.stop();
+      const camOut = await webcam.stop();
+      const micOut = mic.state.isRecording ? await mic.stopRecording() : null;
+      if (!screenOut || !camOut) {
+        showToast("Recording outputs missing.", "error", 4000);
+        return;
       }
+      const out = await invoke<string>("compose_pip_cmd", {
+        baseVideoPath: screenOut,
+        overlayVideoPath: camOut,
+        audioPath: micOut?.path || null,
+        corner,
+        pipWidthPx: pip,
+        marginPx: margin,
+      });
+      try {
+        const media = await importVideo(out);
+        const ev = new CustomEvent("media-imported", { detail: media });
+        window.dispatchEvent(ev);
+      } catch {}
+    } catch (e) {
+      showToast("Failed to finalize combined recording.", "error", 4000);
     } finally {
       setBusy(false);
     }
@@ -55,19 +74,6 @@ const CombinedRecorder: React.FC = () => {
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
-        <label className="text-xs text-gray-300">
-          <div className="mb-1">Webcam</div>
-          <select value={cam} onChange={(e)=>setCam(e.target.value)} className="px-2 py-1 bg-gray-200 text-black rounded text-sm w-full" title="Webcam">
-            {cams.map((c) => (<option key={c} value={c}>{c}</option>))}
-          </select>
-        </label>
-        <label className="text-xs text-gray-300">
-          <div className="mb-1">Microphone</div>
-          <select value={mic} onChange={(e)=>setMic(e.target.value)} className="px-2 py-1 bg-gray-200 text-black rounded text-sm w-full" title="Microphone">
-            <option value="">No Mic</option>
-            {mics.map((m) => (<option key={m} value={m}>{m}</option>))}
-          </select>
-        </label>
         <label className="text-xs text-gray-300">
           <div className="mb-1">PiP Corner</div>
           <select value={corner} onChange={(e)=>setCorner(e.target.value as any)} className="px-2 py-1 bg-gray-200 text-black rounded text-sm w-full" title="PiP Corner">
@@ -94,10 +100,10 @@ const CombinedRecorder: React.FC = () => {
         </label>
       </div>
       <div className="flex justify-end">
-        {!state.isRecording ? (
+        {!screen.state.isRecording ? (
           <button onClick={handleStart} disabled={busy} className="px-3 py-1 bg-purple-300 hover:bg-purple-400 text-black rounded text-sm font-medium disabled:opacity-60">Start Combined</button>
         ) : (
-          <button onClick={handleStop} disabled={busy} className="px-3 py-1 bg-red-300 hover:bg-red-400 text-black rounded text-sm font-medium disabled:opacity-60">Stop ({prettyElapsed})</button>
+          <button onClick={handleStop} disabled={busy} className="px-3 py-1 bg-red-300 hover:bg-red-400 text-black rounded text-sm font-medium disabled:opacity-60">Stop ({screen.prettyElapsed})</button>
         )}
       </div>
     </div>

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { useMicrophone } from "../../hooks/useMicrophone";
+import { useRecording } from "../../context/RecordingContext";
 import { useTimeline } from "../../context/TimelineContext";
 
 // Compact audio VU meter with device selector and preview toggle
 const AudioMeter: React.FC = () => {
-  const { state, listDevices, startPreview, stopPreview, levelDb, startRecording, stopRecording } = useMicrophone();
+  const { mic } = useRecording();
+  const { state, listDevices, startPreview, stopPreview, levelDb, startRecording, stopRecording } = mic;
   const timeline = useTimeline();
   const [devices, setDevices] = useState<Array<{ id: string; label: string }>>([]);
   const [deviceId, setDeviceId] = useState<string>("");

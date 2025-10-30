@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useRecorder } from "../../hooks/useRecorder";
+import { useRecording } from "../../context/RecordingContext";
 import { importVideo } from "../../utils/api";
 import { exists } from "@tauri-apps/api/fs";
 import { useToastContext } from "../../context/ToastContext";
@@ -14,7 +14,8 @@ import { useMicrophone } from "../../hooks/useMicrophone";
  * - Auto-imports finished recording into media library
  */
 const ScreenRecorder: React.FC = () => {
-  const { state, start, stop, listSources, prettyElapsed } = useRecorder();
+  const { screen } = useRecording();
+  const { state, start, stop, listSources, prettyElapsed } = screen;
   const { showToast } = useToastContext();
   const sys = useSystemAudioLevel();
   const mic = useMicrophone();
