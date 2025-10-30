@@ -1,6 +1,6 @@
 # Progress: ClipForge
 
-## Current Status: MVP in Progress (Import/Preview/Timeline/Trim/Export/Packaging complete)
+## Current Status: MVP in Progress (Import/Preview/Timeline/Trim/Export/Packaging complete) + Sprint 2 Block B PR#5 (Multi-track) implemented + PR#6 (Transitions & Overlays preview) + Recording toolbar/mic stabilization + Screen voiceover mux + PR#7 (Transcription) in progress + PR#8 (Highlight Extraction) started + PR#9 (Apply Trim) started + PR#10 (QA & Polish) in progress
 
 ### Overall Completion: ~85%
 
@@ -21,6 +21,29 @@
  - ✅ Dynamic min zoom to fit full video; snap playhead to in after gating
  - ✅ Export pipeline with progress events; frontend export button and status (PR #8)
  - ✅ Packaging/startup fixed: embedded assets, custom protocol, explicit window creation
+ - ✅ Multi-track timeline infrastructure (Sprint 2 PR #5)
+   - Tracks (V1/A1/O1), items with media refs, start/end, trimIn/trimOut
+   - Drag between tracks and along time with snapping to seconds/playhead
+   - No-overlap enforcement per track
+   - Persistence via `timelineDoc` in project state
+ - ✅ Transitions & Overlays (Preview)
+   - Model and persistence for transitions (crossfade/fadeblack)
+  - Transition/Overlay menus; text overlays visible in preview
+  - TimelinePreview: primary retains native controls; secondary shows as PiP; audio tracks play together
+ - ✅ Recording UI (Right toolbar)
+   - Recording tab with stacked controls; AI Tools tab placeholder
+   - Mic preview/record stabilized; mic-only audio added to A1 at playhead
+   - Backend ffmpeg stderr forwarded; args printed for diagnostics
+  - Screen voiceover: reuse mic recorder; on stop, mux mic M4A + screen MP4 → `_vo.mp4`; auto-import
+  - System audio level meter in Screen Record; hint when no loopback device
+  - Webcam card now shows live preview with red REC indicator while recording
+  - Modular Combined Recorder: shared hook context + PiP compose command (no separate device pickers)
+ - ↩ Media Library tabs reverted: attempted Video/Audio tabs + audio import UI; rolled back to video-only library. Left code comment to revisit.
+ - ✅ Timeline item removal interactions
+   - Delete/Backspace removes the selected timeline item (video or audio)
+   - "Remove Selected" button in Right Panel removes current selection with toast feedback
+ - ✅ Timeline drag behavior
+   - Dragging items moves items between tracks/time; trim gates only move when dragging empty regions of the timeline
 
 ### Infrastructure
 - ✅ Tauri + React + Vite project initialized
@@ -34,9 +57,12 @@
 
 ### Immediate Next Steps
 - [ ] QA (PR #10)
+- [ ] Recording source enumeration (multi-display/windows)
+ - [ ] Optional: transcode progress events
+ - [ ] System audio device UI selector
 
 ### Media Import Pipeline (BLOCK B)
-- [ ] Drag-and-drop path extraction (enhancement)
+- [ ] Drag-and-drop path extraction from OS (enhancement)
 
 ### Preview & Timeline (BLOCK C)
 - [x] **PR #6**: Konva Timeline Editor
@@ -93,10 +119,8 @@
  - [x] Packaged startup loads embedded UI
 
 ### Post-MVP Features (Future)
-- [ ] Screen recording
-- [ ] Webcam recording
-- [ ] Multi-track timeline
-- [ ] Transitions and effects
+- [x] Multi-track timeline
+- [ ] Transitions and effects (export filtergraph integration in PR #11)
 - [ ] Undo/redo
 - [ ] Project autosave
 - [ ] Cloud export

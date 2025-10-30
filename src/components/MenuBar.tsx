@@ -78,7 +78,7 @@ const MenuBar: React.FC = () => {
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
         <span className="text-xl md:text-2xl font-bold text-gray-200">ClipForge</span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <button
           onClick={handleHelp}
           className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-black rounded-md transition-colors font-medium"

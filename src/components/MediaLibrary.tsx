@@ -1,11 +1,16 @@
 import React, { useEffect, useState, useRef as useReactRef } from "react";
 import { useExport } from "../hooks/useExport";
-import { getMediaLibrary, deleteMediaItem, type MediaDto, ensurePreview, loadProjectState, saveProjectState, type PersistedState } from "../utils/api";
+import { getMediaLibrary, deleteMediaItem, type MediaDto, ensurePreview, loadProjectState, saveProjectState, type PersistedState, importVideo } from "../utils/api";
 import { convertFileSrc } from "@tauri-apps/api/tauri";
 import VideoPlayer from "./VideoPlayer";
+import TimelinePreview from "./TimelinePreview";
+import TransitionMenu from "./Timeline/TransitionMenu";
+import OverlayMenu from "./Timeline/OverlayMenu";
+import StreamMixer from "./StreamMixer";
 import Timeline from "./Timeline";
 import { TimelineProvider, useTimeline } from "../context/TimelineContext";
 import { useToastContext } from "../context/ToastContext";
+import RightToolbar from "./RightToolbar";
 
 
 const MediaLibrary: React.FC = () => {
@@ -15,16 +20,30 @@ const MediaLibrary: React.FC = () => {
   const lastSelectedRef = useReactRef<MediaDto | null>(null);
   const { showToast, dismissToast } = useToastContext();
 
+  // NOTE: Audio/Video tab UI was removed per product decision. We keep minimal
+  // helpers and comments for potential future re-introduction. The library now
+  // shows videos only (mp4/mov/webm). To revisit tabs: restore filter logic and
+  // UI, and wire audio import/display.
+  const videoExts = new Set([".mp4", ".mov", ".webm"]);
+  const extOf = (nameOrPath?: string) => (nameOrPath || "").toLowerCase().slice((nameOrPath || "").lastIndexOf("."));
+  const isVideo = (m: MediaDto) => videoExts.has(extOf(m.filename || m.path));
+
   const load = async () => {
     setLoading(true);
     try {
       const list = await getMediaLibrary();
       setMedia(list);
-      if (!selected && list.length > 0) setSelected(list[0]);
+      if (!selected) {
+        const firstVideo = list.find(isVideo);
+        if (firstVideo) setSelected(firstVideo);
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  // Note: Mic audio auto-import and Audio tab were removed per product decision.
+  // Keeping this comment as a breadcrumb for future re-introduction.
 
   useEffect(() => {
     load();
@@ -102,18 +121,22 @@ const MediaLibrary: React.FC = () => {
   }, [selected?.path]);
 
   const handleImport = async () => {
-    // Reuse backend file dialog command if present; otherwise rely on UI MenuBar
     try {
-      // This component assumes MenuBar triggers open_file_dialog; for inline import
-      // you can wire a call to invoke("open_file_dialog") and then importVideo(result.path)
-      // Here we only refresh
+      const { invoke } = await import("@tauri-apps/api/tauri");
+      const result = await invoke<{ path: string; name: string } | null>("open_file_dialog", {});
+      if (!result) return;
+      const ext = extOf(result.name);
+      if (!videoExts.has(ext)) return alert("Please select a video: mp4, mov, webm");
+      await importVideo(result.path);
+      const ev = new CustomEvent("media-imported", { detail: { path: result.path, filename: result.name } });
+      window.dispatchEvent(ev);
       await load();
     } catch {}
   };
 
   const RightPanel: React.FC = () => {
     const timeline = useTimeline();
-    const { exportTrim, isExporting, progress, error } = useExport();
+    const { exportTrim, exportTimelineSegment, isExporting, progress, error } = useExport();
     const { showToast, dismissToast } = useToastContext();
     const playerApiRef = useReactRef<{
       seek: (t: number) => void;
@@ -123,8 +146,12 @@ const MediaLibrary: React.FC = () => {
     } | null>(null);
     const lastTimeRef = useReactRef<number>(0);
     const exportToastIdRef = useReactRef<string | null>(null);
+    const [resolution, setResolution] = useState<"source" | "720p" | "1080p">("source");
+    const [normalizeEnabled, setNormalizeEnabled] = useState<boolean>(true);
+    const [fadeInSec, setFadeInSec] = useState<number>(0);
+    const [fadeOutSec, setFadeOutSec] = useState<number>(0);
 
-    // Load persisted state on selection change (apply trims and timeline settings)
+    // Load persisted state on initial mount and when selection changes (apply trims/timeline settings and hydrate timelineDoc once)
     useEffect(() => {
       (async () => {
         const state = await loadProjectState();
@@ -137,20 +164,37 @@ const MediaLibrary: React.FC = () => {
           const t = state.trimsByPath[selected.path];
           timeline.setTrimRange(t.inPoint, t.outPoint);
         }
+        // Hydrate multi-track doc if present (only when empty to avoid overwriting)
+        if (state.timelineDoc && timeline.state.items.length === 0) {
+          timeline.hydrateTimeline({ tracks: state.timelineDoc.tracks, items: state.timelineDoc.items, transitions: state.timelineDoc.transitions || [] });
+        }
+        // Export settings (PR#12)
+        if (state.exportSettings) {
+          if (typeof state.exportSettings.normalizeEnabled === 'boolean') setNormalizeEnabled(state.exportSettings.normalizeEnabled);
+          if (typeof state.exportSettings.fadeInSec === 'number') setFadeInSec(state.exportSettings.fadeInSec);
+          if (typeof state.exportSettings.fadeOutSec === 'number') setFadeOutSec(state.exportSettings.fadeOutSec);
+        }
       })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selected?.path]);
 
-    // Persist state when trims or timeline settings change
+    // Persist state when trims, timeline settings, or multi-track doc change
     useEffect(() => {
       (async () => {
-        const base: PersistedState = { version: 1, lastSelectedPath: selected?.path, timeline: { pxPerSecond: timeline.state.pxPerSecond, loopTrim: timeline.state.loopTrim }, trimsByPath: {} };
+        const base: PersistedState = {
+          version: 1,
+          lastSelectedPath: selected?.path,
+          timeline: { pxPerSecond: timeline.state.pxPerSecond, loopTrim: timeline.state.loopTrim },
+          trimsByPath: {},
+          timelineDoc: timeline.serializeTimeline(),
+          exportSettings: { normalizeEnabled, targetLufs: -14, truePeak: -1, fadeInSec, fadeOutSec },
+        };
         if (selected?.path) {
           base.trimsByPath![selected.path] = { inPoint: timeline.state.inPoint || 0, outPoint: timeline.state.outPoint || (timeline.state.duration || 0) };
         }
         await saveProjectState(base);
       })();
-    }, [selected?.path, timeline.state.inPoint, timeline.state.outPoint, timeline.state.pxPerSecond, timeline.state.loopTrim]);
+    }, [selected?.path, timeline.state.inPoint, timeline.state.outPoint, timeline.state.pxPerSecond, timeline.state.loopTrim, timeline.state.items, timeline.state.tracks, normalizeEnabled, fadeInSec, fadeOutSec]);
 
     // Export progress toast
     useEffect(() => {
@@ -166,13 +210,125 @@ const MediaLibrary: React.FC = () => {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isExporting, progress?.percent]);
 
+    // Export diagnostics: log backend export events and stderr
+    useEffect(() => {
+      let unsubs: Array<() => void> = [];
+      (async () => {
+        try {
+          const isTauri = typeof (window as any).__TAURI__ !== "undefined" || typeof (window as any).__TAURI_INTERNALS__ !== "undefined";
+          if (!isTauri) return;
+          const { listen } = await import("@tauri-apps/api/event");
+          const add = async (name: string, fn: (e: any) => void) => {
+            const un = await listen(name, fn);
+            unsubs.push(un);
+          };
+          await add("export:start", (e) => { try { console.info("[Export] start:", e.payload); } catch {} });
+          await add("export:progress", (e) => { try { console.info("[Export] progress:", e.payload); } catch {} });
+          await add("export:success", (e) => { try { console.info("[Export] success:", e.payload); } catch {} });
+          await add("export:error", (e) => { try { console.error("[Export] error:", e.payload); } catch {} });
+          await add("export:graph", (e) => { try { console.info("[Export] graph:", e.payload); } catch {} });
+          await add("export:stderr", (e) => { try { console.warn("[Export][stderr]", (e.payload as any)?.line); } catch {} });
+        } catch (e) {
+          try { console.warn("[Export] failed to attach listeners:", e); } catch {}
+        }
+      })();
+      return () => { unsubs.forEach((u) => { try { (u as any)(); } catch {} }); };
+    }, []);
+
+    // PR #9: Apply highlight globally when backend signals success
+    useEffect(() => {
+      let unlisten: any;
+      (async () => {
+        try {
+          const { listen } = await import("@tauri-apps/api/event");
+          unlisten = await listen("ai:highlight:success", (e: any) => {
+            try { console.log("[AI] highlight:success payload=", e?.payload); } catch {}
+            const mid = Number(e?.payload?.mediaId ?? -1);
+            if (!selected || Number(selected.id) !== mid) return;
+            const s = Number(e?.payload?.start ?? 0);
+            const ed = Number(e?.payload?.end ?? 0);
+            try { console.log("[AI] applying global trim for mediaId=", mid, "start=", s, "end=", ed); } catch {}
+            const start = isFinite(s) ? s : 0;
+            const end = isFinite(ed) ? ed : (timeline.state.duration || 0);
+            // Apply globally: set trim range and enable loop
+            timeline.setTrimRange(start, end);
+            timeline.setLoopTrim(true);
+            try { playerApiRef.current?.seek(start); } catch {}
+            showToast("Highlight applied", "success", 2500);
+          });
+          await listen("ai:highlight:error", (e: any) => {
+            try { console.warn("[AI] highlight:error payload=", e?.payload); } catch {}
+          });
+        } catch (e) {
+          console.warn("Failed to listen for ai:highlight:success", e);
+        }
+      })();
+      return () => { try { unlisten && unlisten(); } catch {} };
+    }, [selected?.id, timeline.state.duration]);
+
     // Handle MenuBar request-export events and fire export for current selection
     useEffect(() => {
       const handler = async () => {
-        if (!selected) return;
+        try { console.info("[Export] request-export received"); } catch {}
+        if (!selected) { try { console.warn("[Export] No selected media; aborting"); } catch {}; return; }
+        // If a timeline item is selected, export that fence with overlapping media; otherwise fall back to single-clip trim export
+        const selId = timeline.state.selectedItemId;
+        const item = selId ? timeline.state.items.find(it => it.id === selId) : undefined;
+        if (item) {
+          const fenceStart = item.start;
+          const fenceEnd = item.end;
+          // Build videos from tracks of kind 'video' that overlap the fence
+          const trackKindOf = (trackId: string) => timeline.state.tracks.find(t => t.id === trackId)?.kind;
+          const overlaps = (it: typeof item) => Math.max(0, Math.min(fenceEnd, it.end) - Math.max(fenceStart, it.start)) > 0.0001;
+          const clipFor = (it: typeof item) => {
+            const overStart = Math.max(fenceStart, it.start);
+            const overEnd = Math.min(fenceEnd, it.end);
+            const duration = Math.max(0, overEnd - overStart);
+            const seek = Math.max(0, it.trimIn + (overStart - it.start));
+            const offset = Math.max(0, overStart - fenceStart);
+            return { path: it.path, seek, duration, offset, gain: it.gain };
+          };
+          const videos = timeline.state.items
+            .filter(it => trackKindOf(it.trackId) === "video" && overlaps(it))
+            .map(v => ({ ...clipFor(v), isBase: v.id === selId }));
+          // Ensure base exists (selected item)
+          if (!videos.some(v => v.isBase)) {
+            videos.push({ ...clipFor(item), isBase: true });
+          }
+          // Audio: include audio from video items and any audio track items overlapping
+          const audiosFromVideos = timeline.state.items
+            .filter(it => trackKindOf(it.trackId) === "video" && overlaps(it))
+            .map(clipFor);
+          const audiosFromA = timeline.state.items
+            .filter(it => trackKindOf(it.trackId) === "audio" && overlaps(it))
+            .map(clipFor);
+          const audios = [...audiosFromVideos, ...audiosFromA];
+          // Text overlays
+          const overlays = timeline.state.items
+            .filter(it => trackKindOf(it.trackId) === "overlay" && overlaps(it) && !!it.overlayText)
+            .map(it => {
+              const overStart = Math.max(fenceStart, it.start);
+              const overEnd = Math.min(fenceEnd, it.end);
+              return {
+                text: it.overlayText || "",
+                offset: Math.max(0, overStart - fenceStart),
+                duration: Math.max(0, overEnd - overStart),
+                x: (it.overlayX ?? 0.5),
+                y: (it.overlayY ?? 0.85),
+                fontSize: it.overlayFontSize ?? 24,
+                color: it.overlayColor ?? "#ffffff",
+                align: it.overlayAlign ?? "center",
+              };
+            });
+          try { console.info("[Export] multi-track payload", { fenceStart, fenceEnd, videos: videos.length, audios: audios.length, overlays: overlays.length, resolution, normalizeEnabled, fadeInSec, fadeOutSec }); } catch {}
+          await exportTimelineSegment({ fenceStart, fenceEnd, videos, audios, overlays, resolution, normalizeEnabled, fadeInSec, fadeOutSec });
+          return;
+        }
+        // Fallback: single-clip trim export using global in/out
         const src = selected.path;
         const i = timeline.state.inPoint || 0;
         const o = timeline.state.outPoint || timeline.state.duration || 0;
+        try { console.info("[Export] single-track trim", { src, start: i, end: o }); } catch {}
         await exportTrim(src, i, o);
       };
       window.addEventListener("request-export", handler as EventListener);
@@ -226,49 +382,155 @@ const MediaLibrary: React.FC = () => {
       <div className="flex-1 p-6 overflow-y-auto">
         {selected ? (
           <div className="space-y-6 max-w-5xl">
-            <div className="text-base font-semibold">Preview</div>
-            <div className="bg-gray-800 rounded-lg border border-gray-700 p-3">
-              <VideoPlayer
-                clip={{ id: String(selected.id), filePath: selected.preview_path || selected.path, fileName: selected.filename }}
-                onTimeUpdate={(ct, dur) => {
-                  if (dur && Math.abs((timeline.state.duration || 0) - dur) > 0.01) timeline.setDuration(dur);
-                  timeline.setCurrentTime(ct);
-                  // Loop/pause logic at outPoint
-                  const i = timeline.state.inPoint || 0;
-                  const o = timeline.state.outPoint || timeline.state.duration || 0;
-                  if (o > i && ct >= o - 0.01 && playerApiRef.current) {
-                    if (timeline.state.loopTrim) {
-                      playerApiRef.current.seek(i);
-                      playerApiRef.current.play();
-                    } else {
-                      playerApiRef.current.seek(o);
-                      playerApiRef.current.pause();
-                    }
-                  }
-                  lastTimeRef.current = ct;
-                }}
-                onReady={(api) => {
-                  timeline.registerSeekHandler((t: number) => api.seek(t));
-                  const d = api.getDuration();
-                  if (d && Math.abs((timeline.state.duration || 0) - d) > 0.01) timeline.setDuration(d);
-                  // Ensure default trim covers the full duration once known
-                  const inPt = timeline.state.inPoint || 0;
-                  if (d && (timeline.state.outPoint || 0) <= 0.11) {
-                    // Treat very small default out as uninitialized
-                    // Set out to full duration
-                    // Defer to next tick to avoid conflicting state during onReady
-                    setTimeout(() => {
-                      const dur = api.getDuration();
-                      timeline.setTrimRange(inPt, dur || d);
-                    }, 0);
-                  }
-                  playerApiRef.current = api;
-                }}
-              />
+            <div className="text-base font-semibold flex items-center justify-between">
+              <span>Preview</span>
+              {selected && (
+                <div className="flex items-center gap-2">
+                  <select
+                    className="px-2 py-1 bg-gray-200 text-black text-xs rounded"
+                    value={resolution}
+                    onChange={(e) => setResolution(e.target.value as any)}
+                    title="Export resolution"
+                  >
+                    <option value="source">Source</option>
+                    <option value="720p">720p</option>
+                    <option value="1080p">1080p</option>
+                  </select>
+                  <label className="flex items-center gap-1 text-xs">
+                    <input type="checkbox" checked={normalizeEnabled} onChange={(e) => setNormalizeEnabled(e.target.checked)} />
+                    Normalize
+                  </label>
+                  <label className="flex items-center gap-1 text-xs">
+                    Fade In
+                    <select className="px-1 py-0.5 bg-gray-200 text-black text-xs rounded" value={fadeInSec}
+                      onChange={(e) => setFadeInSec(Number(e.target.value))}>
+                      {[0, 0.5, 1, 2, 3].map(n => (
+                        <option key={`fi-${n}`} value={n}>{n}s</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-1 text-xs">
+                    Fade Out
+                    <select className="px-1 py-0.5 bg-gray-200 text-black text-xs rounded" value={fadeOutSec}
+                      onChange={(e) => setFadeOutSec(Number(e.target.value))}>
+                      {[0, 0.5, 1, 2, 3].map(n => (
+                        <option key={`fo-${n}`} value={n}>{n}s</option>
+                      ))}
+                    </select>
+                  </label>
+                  {(() => {
+                    const videoTracks = timeline.state.tracks.filter(t => t.kind === "video");
+                    const audioTracks = timeline.state.tracks.filter(t => t.kind === "audio");
+                    let chosenTrack = videoTracks[0]?.id || "V1";
+                    return (
+                      <>
+                        <select
+                          className="px-2 py-1 bg-gray-200 text-black text-xs rounded"
+                          defaultValue={chosenTrack}
+                          onChange={(e) => { chosenTrack = e.target.value; }}
+                        >
+                          {[...videoTracks, ...audioTracks].map(t => (
+                            <option key={t.id} value={t.id}>Add to {t.id}</option>
+                          ))}
+                        </select>
+                        <button
+                          className="px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded text-black text-xs"
+                          onClick={() => {
+                            const id = `tclip_${Date.now()}`;
+                            const start = Math.max(0, timeline.state.currentTime || 0);
+                            const mediaDur = Number(selected.duration ?? timeline.state.duration ?? 0) || 0;
+                            const trimIn = 0;
+                            // Default item length to the full media duration when known (prevents 5s cutouts)
+                            const len = Math.max(0.5, mediaDur > 0 ? mediaDur : 5);
+                            const trimOut = Math.max(trimIn + len, len);
+                            timeline.addItem({
+                              id,
+                              mediaId: Number(selected.id),
+                              path: selected.path,
+                              trackId: chosenTrack,
+                              start,
+                              end: start + len,
+                              trimIn,
+                              trimOut,
+                            });
+                          }}
+                        >
+                          Add
+                        </button>
+                        <button
+                          className={`px-2 py-1 rounded text-black text-xs ${timeline.state.selectedItemId ? "bg-red-300 hover:bg-red-400" : "bg-gray-300 opacity-60 cursor-not-allowed"}`}
+                          title="Remove selected timeline item (video or audio)"
+                          disabled={!timeline.state.selectedItemId}
+                          onClick={() => {
+                            const selId = timeline.state.selectedItemId;
+                            if (!selId) return;
+                            try { timeline.deleteItem(selId); } catch {}
+                            showToast("Removed item from timeline", "info", 1500);
+                          }}
+                        >
+                          Remove Selected
+                        </button>
+                      </>
+                    );
+                  })()}
+                  <TransitionMenu />
+                  <OverlayMenu />
+                </div>
+              )}
             </div>
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-3">
+              {/* Use TimelinePreview only when there is at least one video item; otherwise show the single-clip preview */}
+              {(() => {
+                const hasVideoItems = timeline.state.items.some(it => {
+                  const tr = timeline.state.tracks.find(t => t.id === it.trackId);
+                  return tr?.kind === "video";
+                });
+                if (hasVideoItems) {
+                  try { console.info("[RightPanel] Using TimelinePreview (video items present)"); } catch {}
+                  return <TimelinePreview />;
+                }
+                try { console.info("[RightPanel] Using single VideoPlayer (no video items)"); } catch {}
+                return (
+                  <VideoPlayer
+                    clip={{ id: String(selected.id), filePath: selected.preview_path || selected.path, fileName: selected.filename }}
+                    onTimeUpdate={(ct, dur) => {
+                      if (dur && Math.abs((timeline.state.duration || 0) - dur) > 0.01) timeline.setDuration(dur);
+                      timeline.setCurrentTime(ct);
+                      // Loop/pause logic at outPoint
+                      const i = timeline.state.inPoint || 0;
+                      const o = timeline.state.outPoint || timeline.state.duration || 0;
+                      if (o > i && ct >= o - 0.01 && playerApiRef.current) {
+                        if (timeline.state.loopTrim) {
+                          playerApiRef.current.seek(i);
+                          playerApiRef.current.play();
+                        } else {
+                          playerApiRef.current.seek(o);
+                          playerApiRef.current.pause();
+                        }
+                      }
+                      lastTimeRef.current = ct;
+                    }}
+                    onReady={(api) => {
+                      timeline.registerSeekHandler((t: number) => api.seek(t));
+                      const d = api.getDuration();
+                      if (d && Math.abs((timeline.state.duration || 0) - d) > 0.01) timeline.setDuration(d);
+                      const inPt = timeline.state.inPoint || 0;
+                      if (d && (timeline.state.outPoint || 0) <= 0.11) {
+                        setTimeout(() => {
+                          const dur = api.getDuration();
+                          timeline.setTrimRange(inPt, dur || d);
+                        }, 0);
+                      }
+                      playerApiRef.current = api;
+                    }}
+                  />
+                );
+              })()}
+            </div>
+            <StreamMixer />
             {error && <div className="text-xs text-red-400">Export error: {error}</div>}
             <Timeline />
-            <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+            <div className="mt-3 bg-gray-800 border border-gray-700 rounded-lg p-4">
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                 <div className="text-gray-400">Filename</div>
                 <div className="text-gray-200 truncate" title={selected.filename}>{selected.filename}</div>
@@ -298,44 +560,52 @@ const MediaLibrary: React.FC = () => {
 
   return (
     <div className="flex h-full bg-gray-900 text-white">
-      {/* Sidebar */}
-      <div className="w-80 border-r border-gray-800 p-4 overflow-y-auto">
-        <div className="sticky top-0 bg-gray-900 pb-2 mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold">Media Library</h2>
-          <button onClick={handleImport} className="px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded-md text-black text-sm">Refresh</button>
-        </div>
-        {loading ? (
-          <div className="text-gray-400">Loading...</div>
-        ) : media.length === 0 ? (
-          <div className="text-gray-400 text-sm">No media yet. Use Import to add videos.</div>
-        ) : (
-          <div className="grid grid-cols-1 gap-3">
-            {media.map((m) => (
-              <button key={m.id} onClick={() => setSelected(m)} className={`text-left bg-gray-800 rounded-md p-2 border transition-colors ${selected?.id === m.id ? "border-blue-500" : "border-gray-700 hover:border-gray-600"}`}>
-                {m.thumbnail_path ? (
-                  <img
-                    src={convertFileSrc(m.thumbnail_path)}
-                    alt={m.filename}
-                    className="w-full h-28 object-cover rounded"
-                    onError={(e) => {
-                      const el = e.currentTarget as HTMLImageElement;
-                      el.style.display = 'none';
-                      (el.parentElement as HTMLElement).insertAdjacentHTML('beforeend', '<div class="w-full h-28 bg-gray-700 rounded"></div>');
-                    }}
-                  />
-                ) : (
-                  <div className="w-full h-28 bg-gray-700 rounded" />
-                )}
-                <div className="mt-2 text-xs truncate text-gray-200">{m.filename}</div>
-              </button>
-            ))}
+      {/* Sidebar with independent scroll areas (Video only) */}
+      <div className="w-80 border-r border-gray-800 p-0 flex flex-col">
+        <div className="px-4 pt-4 pb-2 border-b border-gray-800">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold">Media Library</h2>
+            <button onClick={handleImport} className="px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded-md text-black text-sm">Import</button>
           </div>
-        )}
+          {/* Tabs removed per product decision; library shows videos only. */}
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-3">
+          {loading ? (
+            <div className="text-gray-400">Loading...</div>
+          ) : media.filter(isVideo).length === 0 ? (
+            <div className="text-gray-400 text-sm">No videos yet. Use Import to add videos.</div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3">
+              {media.filter(isVideo).map((m) => (
+                <button key={m.id} onClick={() => setSelected(m)} className={`text-left bg-gray-800 rounded-md p-2 border transition-colors ${selected?.id === m.id ? "border-blue-500" : "border-gray-700 hover:border-gray-600"}`}>
+                  {m.thumbnail_path ? (
+                    <img
+                      src={convertFileSrc(m.thumbnail_path)}
+                      alt={m.filename}
+                      className="w-full h-28 object-cover rounded"
+                      onError={(e) => {
+                        const el = e.currentTarget as HTMLImageElement;
+                        el.style.display = 'none';
+                        (el.parentElement as HTMLElement).insertAdjacentHTML('beforeend', '<div class="w-full h-28 bg-gray-700 rounded"></div>');
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-28 bg-gray-700 rounded" />
+                  )}
+                  <div className="mt-2 text-xs truncate text-gray-200">{m.filename}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Preview + Timeline Panel */}
+      {/* Preview + Timeline Panel + Right Toolbar (both under TimelineProvider) */}
       <TimelineProvider>
-        <RightPanel />
+        <div className="flex-1 flex min-w-0">
+          <RightPanel />
+          <RightToolbar selected={selected} />
+        </div>
       </TimelineProvider>
     </div>
   );

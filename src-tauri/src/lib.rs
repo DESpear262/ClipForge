@@ -2,10 +2,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ffmpeg;
+mod recording;
 mod db;
+mod whisper;
+mod highlight;
 use serde::{Deserialize, Serialize};
 
-use ffmpeg::{probe_metadata, export_trim};
+use ffmpeg::{probe_metadata, export_trim, transcode_recording_to_mp4, transcode_audio_to_m4a, mux_video_audio, compose_pip};
 use tauri::Manager;
 use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
@@ -54,14 +57,28 @@ pub fn run() {
       open_import_dialog,
       open_export_dialog,
       probe_video_metadata,
+      start_screen_recording_cmd,
+      stop_recording_cmd,
+      list_capture_sources_cmd,
+      list_audio_devices_cmd,
+      list_video_devices_cmd,
+      start_combined_recording_cmd,
+      transcode_audio,
+      mux_video_audio_cmd,
+      compose_pip_cmd,
+      transcode_recording,
       open_file_dialog,
       import_video,
       get_media_library,
       delete_media_item,
       ensure_preview,
       export_video,
+      export_timeline_segment_cmd,
       load_project_state,
       save_project_state
+      , transcribe_media_cmd
+      , find_highlight_cmd
+      , ai_preflight_cmd
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
@@ -76,6 +93,55 @@ pub fn run() {
 fn test_ipc() -> String {
   println!("IPC test command received from frontend");
   "IPC connection successful!".to_string()
+}
+
+/// Start screen recording (desktop) using FFmpeg gdigrab. Returns output path on success.
+#[tauri::command]
+async fn start_screen_recording_cmd(app: tauri::AppHandle, fps: Option<u32>, output_path: Option<String>, audio_device: Option<String>) -> Result<String, String> {
+  recording::start_screen_recording(&app, fps, output_path, audio_device)
+    .await
+    .map_err(|e| format!("Failed to start recording: {}", e))
+}
+
+/// Stop active recording session. Returns output path of the recording.
+#[tauri::command]
+async fn stop_recording_cmd(app: tauri::AppHandle) -> Result<String, String> {
+  recording::stop_recording(&app).await.map_err(|e| format!("Failed to stop recording: {}", e))
+}
+
+/// List capture sources (PR#1: desktop only)
+#[tauri::command]
+async fn list_capture_sources_cmd(app: tauri::AppHandle) -> Result<Vec<recording::CaptureSource>, String> {
+  recording::list_capture_sources(&app).await.map_err(|e| format!("Failed to list sources: {}", e))
+}
+
+/// List audio input devices via ffmpeg dshow
+#[tauri::command]
+async fn list_audio_devices_cmd(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+  recording::list_audio_devices(&app).await.map_err(|e| format!("Failed to list audio devices: {}", e))
+}
+
+/// List video input devices via ffmpeg dshow
+#[tauri::command]
+async fn list_video_devices_cmd(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+  recording::list_video_devices(&app).await.map_err(|e| format!("Failed to list video devices: {}", e))
+}
+
+/// Start combined screen+webcam (+optional mic) recording with PiP
+#[tauri::command]
+async fn start_combined_recording_cmd(
+  app: tauri::AppHandle,
+  fps: Option<u32>,
+  output_path: Option<String>,
+  webcam_device: String,
+  audio_device: Option<String>,
+  corner: Option<String>,
+  pip_width_px: Option<u32>,
+  margin_px: Option<u32>,
+) -> Result<String, String> {
+  recording::start_combined_recording(&app, fps, output_path, webcam_device, audio_device, corner, pip_width_px, margin_px)
+    .await
+    .map_err(|e| format!("Failed to start combined recording: {}", e))
 }
 
 /**
@@ -369,6 +435,80 @@ async fn export_video(
     .map_err(|e| format!("Export failed: {}", e))
 }
 
+/// Export a composed timeline segment bounded by a selected item fence.
+#[tauri::command]
+async fn export_timeline_segment_cmd(
+  app: tauri::AppHandle,
+  req: ffmpeg::ExportTimelineRequest,
+) -> Result<(), String> {
+  ffmpeg::export_timeline_segment(&app, req)
+    .await
+    .map_err(|e| format!("Export timeline segment failed: {}", e))
+}
+
+/// Transcode a WebM recording to MP4 and return output path
+#[tauri::command]
+async fn transcode_recording(app: tauri::AppHandle, input_path: String, output_path: String) -> Result<String, String> {
+  if input_path.is_empty() || output_path.is_empty() {
+    return Err("Invalid input or output path".into());
+  }
+  transcode_recording_to_mp4(&app, &input_path, &output_path)
+    .await
+    .map_err(|e| format!("Transcode failed: {}", e))?;
+  Ok(output_path)
+}
+
+/// Transcode audio-only recording to M4A
+#[tauri::command]
+async fn transcode_audio(app: tauri::AppHandle, input_path: String, output_path: String) -> Result<String, String> {
+  if input_path.is_empty() || output_path.is_empty() { return Err("Invalid input or output path".into()); }
+  transcode_audio_to_m4a(&app, &input_path, &output_path)
+    .await
+    .map_err(|e| format!("Transcode failed: {}", e))?;
+  Ok(output_path)
+}
+
+/// Mux a video file and an external audio file into a single MP4
+#[tauri::command]
+async fn mux_video_audio_cmd(app: tauri::AppHandle, video_path: String, audio_path: String, output_path: String) -> Result<String, String> {
+  if video_path.is_empty() || audio_path.is_empty() || output_path.is_empty() { return Err("Invalid path(s)".into()); }
+  mux_video_audio(&app, &video_path, &audio_path, &output_path)
+    .await
+    .map_err(|e| format!("Mux failed: {}", e))?;
+  Ok(output_path)
+}
+
+/// Compose PiP from base + overlay (+ optional mic) into a final MP4.
+#[tauri::command]
+async fn compose_pip_cmd(
+  app: tauri::AppHandle,
+  base_video_path: String,
+  overlay_video_path: String,
+  audio_path: Option<String>,
+  corner: Option<String>,
+  pip_width_px: Option<u32>,
+  margin_px: Option<u32>,
+) -> Result<String, String> {
+  let out = {
+    // Default output next to base video with suffix
+    let base = std::path::Path::new(&base_video_path);
+    let parent = base.parent().ok_or("Invalid base path")?;
+    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+    parent.join(format!("{}_pip.mp4", stem)).to_string_lossy().to_string()
+  };
+  compose_pip(
+    &app,
+    &base_video_path,
+    &overlay_video_path,
+    audio_path.as_deref(),
+    corner.as_deref(),
+    pip_width_px,
+    margin_px,
+    &out,
+  ).await.map_err(|e| format!("Compose failed: {}", e))?;
+  Ok(out)
+}
+
 /// Persisted project state structure
 #[derive(Serialize, Deserialize, Default)]
 struct PersistedState {
@@ -376,6 +516,12 @@ struct PersistedState {
   lastSelectedPath: Option<String>,
   timeline: Option<PersistedTimeline>,
   trimsByPath: Option<std::collections::HashMap<String, PersistedTrim>>, 
+  /// Multi-track doc is stored client-side; optional here if present
+  #[serde(skip_serializing_if = "Option::is_none")]
+  timelineDoc: Option<serde_json::Value>,
+  /// Export settings (PR#12)
+  #[serde(skip_serializing_if = "Option::is_none")]
+  exportSettings: Option<ExportSettings>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -383,6 +529,20 @@ struct PersistedTimeline { pxPerSecond: Option<f64>, loopTrim: Option<bool> }
 
 #[derive(Serialize, Deserialize)]
 struct PersistedTrim { inPoint: f64, outPoint: f64 }
+
+#[derive(Serialize, Deserialize, Default)]
+struct ExportSettings {
+  #[serde(default)]
+  normalizeEnabled: Option<bool>,
+  #[serde(default)]
+  targetLufs: Option<f64>,
+  #[serde(default)]
+  truePeak: Option<f64>,
+  #[serde(default)]
+  fadeInSec: Option<f64>,
+  #[serde(default)]
+  fadeOutSec: Option<f64>,
+}
 
 fn state_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
   let dir = app.path_resolver().app_data_dir().ok_or("app_data_dir not found")?;
@@ -406,4 +566,40 @@ async fn save_project_state(app: tauri::AppHandle, state: PersistedState) -> Res
   let json = serde_json::to_vec_pretty(&state).map_err(|e| e.to_string())?;
   std::fs::write(&path, json).map_err(|e| e.to_string())?;
   Ok(())
+}
+
+/// Transcribe the given media using OpenAI Whisper and persist JSON
+#[tauri::command]
+async fn transcribe_media_cmd(
+  app: tauri::AppHandle,
+  media_id: i64,
+  video_path: String,
+) -> Result<String, String> {
+  if video_path.is_empty() { return Err("Invalid video path".into()); }
+  whisper::transcribe_media(&app, media_id, &video_path).await.map_err(|e| format!("Transcription failed: {}", e))
+}
+
+/// Find a single highlight (start/end) from a transcript via GPT-4o-mini
+#[tauri::command]
+async fn find_highlight_cmd(
+  app: tauri::AppHandle,
+  media_id: i64,
+) -> Result<serde_json::Value, String> {
+  match highlight::find_highlight(&app, media_id).await {
+    Ok((start, end, path)) => Ok(serde_json::json!({ "start": start, "end": end, "path": path })),
+    Err(e) => {
+      // Emit an error event so the frontend can surface details
+      let _ = app.emit_all("ai:highlight:error", serde_json::json!({ "mediaId": media_id, "message": e.to_string() }));
+      Err(format!("Highlight failed: {}", e))
+    },
+  }
+}
+
+/// AI preflight: check key presence and basic internet connectivity
+#[tauri::command]
+async fn ai_preflight_cmd() -> Result<serde_json::Value, String> {
+  let has_key = std::env::var("OPENAI_API_KEY").ok().filter(|s| !s.is_empty()).is_some();
+  let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(3)).build().map_err(|e| e.to_string())?;
+  let online = client.get("https://api.openai.com").send().await.map(|r| r.status().is_success() || r.status().as_u16() >= 400).unwrap_or(false);
+  Ok(serde_json::json!({ "hasKey": has_key, "online": online }))
 }

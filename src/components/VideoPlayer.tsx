@@ -21,9 +21,26 @@ interface VideoPlayerProps {
    * Provides an API to control the player (seek/play/pause) once ready
    */
   onReady?: (api: { seek: (t: number) => void; play: () => void; pause: () => void; getDuration: () => number }) => void;
+  /**
+   * Show native controls. Defaults to true.
+   */
+  showControls?: boolean;
+  /**
+   * Start muted. Defaults to false.
+   */
+  muted?: boolean;
+  /**
+   * Playback volume 0..1. Defaults to 1.
+   */
+  volume?: number;
+  /**
+   * Optional callbacks for play/pause state changes of the native video.
+   */
+  onPlay?: () => void;
+  onPause?: () => void;
 }
 
-const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate, onReady }) => {
+const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate, onReady, showControls = true, muted = false, volume = 1, onPlay, onPause }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [, setIsPlaying] = useState(false);
   const [, setCurrentTime] = useState(0);
@@ -129,8 +146,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate, onReady }
   /**
    * Handle video play/pause events
    */
-  const handlePlay = () => setIsPlaying(true);
-  const handlePause = () => setIsPlaying(false);
+  const handlePlay = () => { setIsPlaying(true); try { onPlay?.(); } catch {} };
+  const handlePause = () => { setIsPlaying(false); try { onPause?.(); } catch {} };
 
   /**
    * Handle video error
@@ -294,6 +311,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate, onReady }
     };
   }, [videoSrc]);
 
+  // Apply volume changes
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    try { video.volume = Math.max(0, Math.min(1, volume)); } catch {}
+  }, [volume]);
+
   // No blob URL cleanup needed when using convertFileSrc
 
   // Calculate seek bar progress
@@ -324,8 +348,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ clip, onTimeUpdate, onReady }
             ref={videoRef}
             className="w-full h-auto max-h-96"
             preload="auto"
-            controls
+            controls={showControls}
             playsInline
+            muted={muted}
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
             onPlay={handlePlay}
