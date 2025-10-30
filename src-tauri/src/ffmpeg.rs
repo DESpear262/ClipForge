@@ -874,11 +874,14 @@ pub async fn compose_pip(
         .stderr(std::process::Stdio::piped());
 
     println!("[compose_pip] filter_complex: {}", filter);
+    println!("[compose_pip] Executing ffmpeg with inputs: base={}, overlay={}, audio={:?}", base_video_path, overlay_video_path, audio_path);
     let output = cmd.output().await.context("Failed to execute ffmpeg compose_pip")?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        println!("[compose_pip] FFmpeg stderr: {}", stderr);
         anyhow::bail!("compose_pip failed: {}", stderr);
     }
+    println!("[compose_pip] FFmpeg execution successful");
     Ok(())
 }
 
