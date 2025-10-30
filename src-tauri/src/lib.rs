@@ -6,7 +6,7 @@ mod recording;
 mod db;
 use serde::{Deserialize, Serialize};
 
-use ffmpeg::{probe_metadata, export_trim, transcode_recording_to_mp4};
+use ffmpeg::{probe_metadata, export_trim, transcode_recording_to_mp4, transcode_audio_to_m4a, mux_video_audio};
 use tauri::Manager;
 use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
@@ -61,6 +61,8 @@ pub fn run() {
       list_audio_devices_cmd,
       list_video_devices_cmd,
       start_combined_recording_cmd,
+      transcode_audio,
+      mux_video_audio_cmd,
       transcode_recording,
       open_file_dialog,
       import_video,
@@ -435,6 +437,26 @@ async fn transcode_recording(app: tauri::AppHandle, input_path: String, output_p
   transcode_recording_to_mp4(&app, &input_path, &output_path)
     .await
     .map_err(|e| format!("Transcode failed: {}", e))?;
+  Ok(output_path)
+}
+
+/// Transcode audio-only recording to M4A
+#[tauri::command]
+async fn transcode_audio(app: tauri::AppHandle, input_path: String, output_path: String) -> Result<String, String> {
+  if input_path.is_empty() || output_path.is_empty() { return Err("Invalid input or output path".into()); }
+  transcode_audio_to_m4a(&app, &input_path, &output_path)
+    .await
+    .map_err(|e| format!("Transcode failed: {}", e))?;
+  Ok(output_path)
+}
+
+/// Mux a video file and an external audio file into a single MP4
+#[tauri::command]
+async fn mux_video_audio_cmd(app: tauri::AppHandle, video_path: String, audio_path: String, output_path: String) -> Result<String, String> {
+  if video_path.is_empty() || audio_path.is_empty() || output_path.is_empty() { return Err("Invalid path(s)".into()); }
+  mux_video_audio(&app, &video_path, &audio_path, &output_path)
+    .await
+    .map_err(|e| format!("Mux failed: {}", e))?;
   Ok(output_path)
 }
 

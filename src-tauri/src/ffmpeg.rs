@@ -491,3 +491,75 @@ pub async fn transcode_recording_to_mp4(
     Ok(())
 }
 
+/// Transcode audio-only WebM/Opus to M4A (AAC)
+pub async fn transcode_audio_to_m4a(
+    app: &AppHandle,
+    input_path: &str,
+    output_path: &str,
+) -> Result<()> {
+    let ffmpeg_path = app
+        .path_resolver()
+        .resolve_resource("bin/ffmpeg.exe")
+        .context("Failed to resolve ffmpeg path")?;
+
+    if !ffmpeg_path.exists() {
+        anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
+    }
+
+    let output = Command::new(&ffmpeg_path)
+        .arg("-i").arg(input_path)
+        .arg("-vn")
+        .arg("-c:a").arg("aac")
+        .arg("-b:a").arg("160k")
+        .arg("-y")
+        .arg(output_path)
+        .output()
+        .await
+        .context("Failed to execute ffmpeg audio transcode")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("ffmpeg transcode failed: {}", stderr);
+    }
+
+    Ok(())
+}
+
+/// Mux a silent video with an external audio track into a single MP4
+pub async fn mux_video_audio(
+    app: &AppHandle,
+    video_path: &str,
+    audio_path: &str,
+    output_path: &str,
+) -> Result<()> {
+    let ffmpeg_path = app
+        .path_resolver()
+        .resolve_resource("bin/ffmpeg.exe")
+        .context("Failed to resolve ffmpeg path")?;
+
+    if !ffmpeg_path.exists() {
+        anyhow::bail!("ffmpeg.exe not found at: {:?}", ffmpeg_path);
+    }
+
+    let output = Command::new(&ffmpeg_path)
+        .arg("-i").arg(video_path)
+        .arg("-i").arg(audio_path)
+        .arg("-c:v").arg("copy")
+        .arg("-c:a").arg("aac")
+        .arg("-b:a").arg("160k")
+        .arg("-shortest")
+        .arg("-movflags").arg("+faststart")
+        .arg("-y")
+        .arg(output_path)
+        .output()
+        .await
+        .context("Failed to execute ffmpeg mux")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("ffmpeg mux failed: {}", stderr);
+    }
+
+    Ok(())
+}
+
