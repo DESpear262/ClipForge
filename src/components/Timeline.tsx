@@ -4,12 +4,13 @@ import { useTimeline } from "../context/TimelineContext";
 import TrackLayer from "./Timeline/TrackLayer";
 
 /**
- * Konva-based single-clip timeline with grid, clip bar, and playhead.
+ * Konva-based multi-track timeline with grid, items, trim overlay, and playhead.
  *
- * - Renders a horizontal time grid with adaptive tick spacing
- * - Shows a single clip block from 0..duration
- * - Playhead follows currentTime; click/drag to seek
- * - Zoom via slider adjusts pxPerSecond
+ * Layering model (performance-optimized):
+ * - Static layer (listening=false): background, grid lines/labels, track row backgrounds.
+ * - Content layer: track items (via TrackLayer Groups), trim overlays/handles/tooltip, playhead.
+ *
+ * This keeps the Stage to two layers to avoid Konva's multi-layer performance penalty.
  */
 const Timeline: React.FC = () => {
   const {
@@ -295,12 +296,9 @@ const Timeline: React.FC = () => {
           onMouseUp={handleUp}
           onMouseLeave={handleLeave}
         >
+          {/* Static layer: background, grid, track bands */}
           <Layer listening={false}>
-            {/* Background */}
             <Rect x={0} y={0} width={timelineWidth} height={timelineHeight} fill="#1f2937" />
-          </Layer>
-          <Layer listening={false}>
-            {/* Grid */}
             {grid.map((g, i) => (
               <Group key={i}>
                 <Line
@@ -313,24 +311,37 @@ const Timeline: React.FC = () => {
                 )}
               </Group>
             ))}
+            {state.tracks.map((track, idx) => (
+              <Rect
+                key={`band-${track.id}`}
+                x={0}
+                y={idx * (rowHeight + trackGap)}
+                width={timelineWidth}
+                height={rowHeight}
+                fill="#111827"
+                opacity={0.6}
+              />
+            ))}
           </Layer>
-          {/* Tracks */}
-          {state.tracks.map((track, idx) => (
-            <TrackLayer
-              key={track.id}
-              track={track}
-              items={state.items.filter(it => it.trackId === track.id)}
-              y={idx * (rowHeight + trackGap)}
-              height={rowHeight}
-              width={timelineWidth}
-              pxPerSecond={state.pxPerSecond}
-              selectedItemId={state.selectedItemId}
-              onItemDragMove={() => { /* visual drag handled by Konva; snap on end */ }}
-              onItemDragEnd={(id, absX, absY) => handleItemDragEnd(id, absX, absY)}
-              onItemMouseDown={(id) => selectItem(id)}
-            />
-          ))}
-          <Layer listening={false}>
+
+          {/* Content layer: items, trim overlay/handles/tooltip, playhead */}
+          <Layer>
+            {state.tracks.map((track, idx) => (
+              <TrackLayer
+                key={track.id}
+                track={track}
+                items={state.items.filter(it => it.trackId === track.id)}
+                y={idx * (rowHeight + trackGap)}
+                height={rowHeight}
+                width={timelineWidth}
+                pxPerSecond={state.pxPerSecond}
+                selectedItemId={state.selectedItemId}
+                onItemDragMove={() => { /* visual drag handled by Konva; snap on end */ }}
+                onItemDragEnd={(id, absX, absY) => handleItemDragEnd(id, absX, absY)}
+                onItemMouseDown={(id) => selectItem(id)}
+              />
+            ))}
+
             {/* Dim outside trim (global) */}
             <Rect x={0} y={0} width={Math.max(0, inX)} height={timelineHeight} fill="#000" opacity={0.15} />
             <Rect x={Math.max(outX, 0)} y={0} width={Math.max(0, timelineWidth - outX)} height={timelineHeight} fill="#000" opacity={0.15} />
@@ -345,24 +356,9 @@ const Timeline: React.FC = () => {
                 <Text x={showTooltip.x + 12} y={12} text={showTooltip.label} fontSize={12} fill="#e5e7eb" />
               </Group>
             )}
-          </Layer>
-          <Layer>
+
             {/* Playhead */}
             <Line points={[playheadX, 0, playheadX, timelineHeight]} stroke="#f59e0b" strokeWidth={2} />
-          </Layer>
-          <Layer>
-            {/* Interaction overlay to ensure pointer events are captured across the surface */}
-            <Rect
-              x={0}
-              y={0}
-              width={timelineWidth}
-              height={timelineHeight}
-              fill="rgba(0,0,0,0)"
-              onMouseDown={handleDown}
-              onMouseMove={handleMove}
-              onMouseUp={handleUp}
-              onMouseLeave={handleLeave}
-            />
           </Layer>
         </Stage>
         {/* Footer labels in tidy box */}
