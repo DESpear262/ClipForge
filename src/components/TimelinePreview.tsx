@@ -22,7 +22,7 @@ const TimelinePreview: React.FC = () => {
   const audioApisRef = useRef<Map<string, { seek: (t: number) => void; play: () => void; pause: () => void; getDuration: () => number }>>(new Map());
 
 // Compute active items across tracks at current time
-const { baseVideo, overlayVideo, transition, blend, activeAudios } = useMemo(() => {
+const { baseVideo, overlayVideo, activeAudios } = useMemo(() => {
   const t = timeline.state.currentTime || 0;
   const videoTracks = timeline.state.tracks.filter(tr => tr.kind === "video");
   const audioTracks = timeline.state.tracks.filter(tr => tr.kind === "audio");
@@ -33,28 +33,12 @@ const { baseVideo, overlayVideo, transition, blend, activeAudios } = useMemo(() 
     .map(x => x.it);
   const base = activeVideos[0];
   const overlay = activeVideos[1];
-  // Transition on base track only
-  let trn: any = undefined; let alpha = 0;
-  if (base) {
-    const ordered = timeline.state.items.filter(it => it.trackId === base.trackId).sort((a,b)=>a.start-b.start);
-    const idx = ordered.findIndex(i => i.id === base.id);
-    const nxt = idx >= 0 ? ordered[idx + 1] : undefined;
-    trn = timeline.state.transitions.find(x => x.fromItemId === base.id && x.toItemId === nxt?.id);
-    if (trn && nxt) {
-      const start = Math.max(nxt.start - trn.duration, base.end - trn.duration);
-      const end = nxt.start;
-      if (t >= start && t <= end) {
-        const span = Math.max(0.001, end - start);
-        alpha = Math.min(1, Math.max(0, (t - start) / span));
-      }
-    }
-  }
   const activeAuds = audioTracks
     .map(tr => timeline.state.items.filter(it => it.trackId === tr.id && t >= it.start && t < it.end))
     .flat();
   try { console.info("[TimelinePreview] active videos:", { base: base?.id, overlay: overlay?.id }, "activeAudios:", activeAuds.map(a=>a.id)); } catch {}
-  return { baseVideo: base, overlayVideo: overlay, transition: trn, blend: alpha, activeAudios: activeAuds };
-}, [timeline.state.currentTime, timeline.state.items, timeline.state.tracks, timeline.state.transitions]);
+  return { baseVideo: base, overlayVideo: overlay, activeAudios: activeAuds };
+}, [timeline.state.currentTime, timeline.state.items, timeline.state.tracks]);
 
   // Update player sources when items change
 useEffect(() => {
