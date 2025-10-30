@@ -22,6 +22,8 @@ interface TrackLayerProps {
   height: number;
   width: number;
   pxPerSecond: number;
+  /** Left-edge time offset in seconds for viewport panning */
+  viewOffsetSec?: number;
   selectedItemId?: string;
   onItemDragMove: (id: string, absX: number, absY: number) => void;
   onItemDragEnd: (id: string, absX: number, absY: number) => void;
@@ -35,6 +37,7 @@ const TrackLayer: React.FC<TrackLayerProps> = ({
   height,
   width: _width,
   pxPerSecond,
+  viewOffsetSec = 0,
   selectedItemId,
   onItemDragMove,
   onItemDragEnd,
@@ -42,11 +45,11 @@ const TrackLayer: React.FC<TrackLayerProps> = ({
 }) => {
   const itemShapes = useMemo(() => {
     return items.map((it) => {
-      const x = it.start * pxPerSecond;
+      const x = (it.start - viewOffsetSec) * pxPerSecond;
       const w = Math.max(2, (it.end - it.start) * pxPerSecond);
       return { id: it.id, x, y: y + 4, width: w, height: Math.max(1, height - 8) };
     });
-  }, [items, pxPerSecond, y, height]);
+  }, [items, pxPerSecond, y, height, viewOffsetSec]);
 
   return (
     <Group>
@@ -57,14 +60,24 @@ const TrackLayer: React.FC<TrackLayerProps> = ({
           x={shape.x}
           y={shape.y}
           onDragMove={(e) => {
+            // Prevent bubbling to Stage so timeline gate drag/seek does not trigger while dragging items
+            // Konva supports stopping propagation via cancelBubble
+            // See: https://konvajs.org/docs/events/Binding_Events.html
+            (e as any).cancelBubble = true;
             const abs = e.target.getAbsolutePosition();
             onItemDragMove(shape.id, abs.x, abs.y);
           }}
           onDragEnd={(e) => {
+            // Stop bubbling so Stage-level mouse handlers don’t process this drag end
+            (e as any).cancelBubble = true;
             const abs = e.target.getAbsolutePosition();
             onItemDragEnd(shape.id, abs.x, abs.y);
           }}
-          onMouseDown={() => onItemMouseDown?.(shape.id)}
+          onMouseDown={(e) => {
+            // Ensure clicking an item only selects/moves the item and does not start gate movement
+            (e as any).cancelBubble = true;
+            onItemMouseDown?.(shape.id);
+          }}
         >
           <Rect
             x={0}
