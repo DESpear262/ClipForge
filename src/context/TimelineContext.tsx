@@ -16,6 +16,7 @@ export interface TimelineItem {
   end: number;
   trimIn: number;
   trimOut: number;
+  gain?: number; // 0..1 volume for preview/export
   // Overlay props (for track kind 'overlay')
   overlayText?: string;
   overlayX?: number; // 0..1 relative
@@ -115,6 +116,7 @@ export const TimelineProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     activeClipId: undefined,
     tracks: [
       { id: "V1", kind: "video" },
+      { id: "V2", kind: "video" },
       { id: "A1", kind: "audio" },
       { id: "O1", kind: "overlay" },
     ],
@@ -156,7 +158,11 @@ export const TimelineProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const duration = prev.duration || 0;
       const i = Math.max(0, Math.min(inPoint, duration));
       const o = Math.max(i + MIN_GAP, Math.min(outPoint, duration));
-      if (prev.activeClipId) setClipTrim(prev.activeClipId, i, o);
+      // Defer ProjectProvider update to avoid React warning about cross-provider updates during render
+      if (prev.activeClipId) {
+        const clipId = prev.activeClipId;
+        queueMicrotask(() => setClipTrim(clipId, i, o));
+      }
       return { ...prev, inPoint: i, outPoint: o };
     });
   }, [setClipTrim]);
@@ -189,7 +195,17 @@ export const TimelineProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   const addItem = useCallback((item: TimelineItem) => {
-    setState((prev) => ({ ...prev, items: [...prev.items, item], selectedItemId: item.id }));
+    setState((prev) => {
+      const track = prev.tracks.find(t => t.id === item.trackId);
+      const isAudio = track?.kind === "audio";
+      const next = {
+        ...prev,
+        items: [...prev.items, item],
+        selectedItemId: isAudio ? prev.selectedItemId : item.id,
+      };
+      try { console.info("[Timeline] addItem", { item, prevSelected: prev.selectedItemId, nextSelected: next.selectedItemId, items: next.items.length }); } catch {}
+      return next;
+    });
   }, []);
 
   const updateItem = useCallback((id: string, patch: Partial<Omit<TimelineItem, "id">>) => {

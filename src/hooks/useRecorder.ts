@@ -43,6 +43,9 @@ export function useRecorder() {
     void add("record:error", (p) => {
       setState((prev) => ({ ...prev, isRecording: false, error: String(p?.message || "Recording error") }));
     });
+    void add("record:ffmpeg", (p) => {
+      try { console.info("[record:ffmpeg]", p?.line ?? p); } catch {}
+    });
     return () => {
       unsubsRef.current.forEach((u) => { try { u(); } catch {} });
       unsubsRef.current = [];
@@ -57,9 +60,9 @@ export function useRecorder() {
     }
   }, []);
 
-  const start = useCallback(async (opts?: { fps?: number; outputPath?: string; audioDevice?: string }) => {
+  const start = useCallback(async (opts?: { fps?: number; outputPath?: string }) => {
     try {
-      const out = await invoke<string>("start_screen_recording_cmd", { fps: opts?.fps, outputPath: opts?.outputPath, audioDevice: opts?.audioDevice });
+      const out = await invoke<string>("start_screen_recording_cmd", { fps: opts?.fps, outputPath: opts?.outputPath });
       setState({ isRecording: true, elapsedMs: 0, outputPath: out });
       return out;
     } catch (e) {

@@ -1,6 +1,6 @@
 # Progress: ClipForge
 
-## Current Status: MVP in Progress (Import/Preview/Timeline/Trim/Export/Packaging complete) + Sprint 2 Block B PR#5 (Multi-track) implemented + PR#6 (Transitions & Overlays preview)
+## Current Status: MVP in Progress (Import/Preview/Timeline/Trim/Export/Packaging complete) + Sprint 2 Block B PR#5 (Multi-track) implemented + PR#6 (Transitions & Overlays preview) + Recording toolbar/mic stabilization + Screen voiceover mux
 
 ### Overall Completion: ~85%
 
@@ -30,6 +30,13 @@
    - Model and persistence for transitions (crossfade/fadeblack)
    - Transition/Overlay menus; text overlays visible in preview
    - TimelinePreview stacked players for crossfade; black overlay for fadeblack
+ - ✅ Recording UI (Right toolbar)
+   - Recording tab with stacked controls; AI Tools tab placeholder
+   - Mic preview/record stabilized; mic-only audio added to A1 at playhead
+   - Backend ffmpeg stderr forwarded; args printed for diagnostics
+  - Screen voiceover: reuse mic recorder; on stop, mux mic M4A + screen MP4 → `_vo.mp4`; auto-import
+  - System audio level meter in Screen Record; hint when no loopback device
+ - ↩ Media Library tabs reverted: attempted Video/Audio tabs + audio import UI; rolled back to video-only library. Left code comment to revisit.
 
 ### Infrastructure
 - ✅ Tauri + React + Vite project initialized
@@ -45,6 +52,7 @@
 - [ ] QA (PR #10)
 - [ ] Recording source enumeration (multi-display/windows)
  - [ ] Optional: transcode progress events
+ - [ ] System audio device UI selector
 
 ### Media Import Pipeline (BLOCK B)
 - [ ] Drag-and-drop path extraction from OS (enhancement)

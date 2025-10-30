@@ -1,7 +1,7 @@
 # Active Context: ClipForge
 
 ## Current Work Focus
-**Primary Task**: Final QA and Sprint 2 Block A/B. Import/preview, Konva timeline (PR #6), trim handles (PR #7), export pipeline (PR #8), and packaging/startup flow are complete on Tauri v1. PR #1 (Screen Recording) implemented using FFmpeg gdigrab with start/stop/events and UI entrypoint. PR #2 (Webcam Recording) implemented via MediaRecorder → WebM → backend transcode (MP4) with auto-import.
+**Primary Task**: Final QA and Sprint 2 Block A/B. Import/preview, Konva timeline (PR #6), trim handles (PR #7), export pipeline (PR #8), and packaging/startup flow are complete on Tauri v1. PR #1 (Screen Recording) implemented using FFmpeg gdigrab with start/stop/events and UI entrypoint. PR #2 (Webcam Recording) implemented via MediaRecorder → WebM → backend transcode (MP4) with auto-import. Recording controls moved to a right-hand toolbar with tabs (Recording, AI placeholder). Voiceover flow added: reuse Mic Recorder and mux onto screen capture after stop; screen control has a checkbox to enable.
 
 ## Recent Changes
 - ✅ Aligned documentation to Tauri v1 (removed v2 references)
@@ -26,6 +26,16 @@
  - ✅ UI polish: centered header title, full-window layout, metadata card, tidy in/out/len box
  - ✅ Progress toasts: import success, preview start/progress/success, export percent + success
 - ✅ JSON persistence: trims per path, timeline zoom, loop toggle, last-selected path
+- ✅ Right-hand toolbar: new `RightToolbar` with tabs; Recording tab hosts stacked, labeled controls
+- ✅ Microphone preview/record stability: preserved state, debounced getUserMedia, resume AudioContext
+- ✅ Mic recorder lifecycle: start (no timeslice), stop waits for final chunk; UI flags wired onstart/onstop
+- ✅ Added timeline injection for mic-only audio to track A1 at playhead
+- ✅ Backend logging: ffmpeg args + stderr forwarded over `record:ffmpeg`; chosen system audio device printed
+- ✅ Screen voiceover: checkbox in Screen Record starts mic capture; on stop, backend muxes mic M4A onto screen MP4 to produce `_vo.mp4`, then imports that
+- ✅ System audio level meter in Screen Record (tries loopback-like audioinput); shows hint if unavailable
+- ✅ Allowlist update: enabled `tauri.path` for appDataDir
+ - ✅ Allowlist update: enabled `fs.exists` to support post-record existence check before import
+- ✅ Timeline warning fix: defer `setClipTrim` via `queueMicrotask` to avoid cross-provider setState
 - ✅ PR #5 (Sprint 2 – Block B): Multi-track timeline infrastructure
   - Tracks: V1 (video), A1 (audio), O1 (overlay)
   - Timeline items with media refs, start/end, trimIn/trimOut
@@ -38,6 +48,9 @@
    - OverlayMenu to add text overlays on O1 with position/color/size
    - TimelinePreview stacks players to visualize crossfade; fade-to-black via black overlay
    - Overlays rendered as HTML in preview; persisted with timelineDoc
+ - ↩ Media Library tabs reverted
+   - Attempted Video/Audio tabs and audio library; reverted per product decision
+   - Library now displays videos only; code comment left in `MediaLibrary.tsx` as breadcrumb to revisit later
 
 ## Active Development
 **PR Status**: PR #1 (App Shell & Bridge) ✅, PR #2 (FFmpeg Probe) ✅, PR #3 (File Import) ✅, PR #5 (Video Preview) ✅, PR #6 (Konva Timeline) ✅, PR #7 (Trim Handles) ✅, PR #8 (Export Pipeline) ✅, PR #5 (Sprint 2 Block B – Multi-track) ✅, PR #6 (Transitions & Overlays preview) ✅
@@ -98,6 +111,7 @@
 ### Known Gaps
 - Screen/window enumeration returns desktop only (Windows list pending)
 - Webcam: no progress events during transcode (fast for short clips)
+- System-audio loopback is device-dependent; explicit system-audio device selector is planned; without loopback, voiceover checkbox is the supported path
 
 ### Upcoming Challenges
 - FFmpeg sidecar path resolution in production

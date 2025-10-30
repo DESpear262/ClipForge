@@ -63,63 +63,80 @@ const WebcamRecorder: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <select
-        value={deviceId}
-        onChange={(e) => setDeviceId(e.target.value)}
-        className="px-2 py-1 bg-gray-200 text-black rounded text-sm"
-        title="Camera"
-      >
-        {devices.map((d) => (
-          <option key={d.id} value={d.id}>{d.label}</option>
-        ))}
-      </select>
-      <select
-        value={`${res.w}x${res.h}`}
-        onChange={(e) => {
-          const [w, h] = e.target.value.split("x").map(Number);
-          setRes({ w, h });
-        }}
-        className="px-2 py-1 bg-gray-200 text-black rounded text-sm"
-        title="Resolution"
-      >
-        <option value="1280x720">720p</option>
-        <option value="1920x1080">1080p</option>
-      </select>
-      <select
-        value={fps}
-        onChange={(e) => setFps(Number(e.target.value))}
-        className="px-2 py-1 bg-gray-200 text-black rounded text-sm"
-        title="FPS"
-      >
-        <option value={30}>30 fps</option>
-        <option value={60}>60 fps</option>
-      </select>
-      <label className="flex items-center gap-1 text-xs">
-        <input type="checkbox" checked={includeMic} onChange={(e) => setIncludeMic(e.target.checked)} />
-        Mic
-      </label>
-      <button onClick={refreshPreview} className="px-2 py-1 bg-gray-200 hover:bg-gray-300 text-black rounded text-sm">Preview</button>
-      {!state.isRecording ? (
-        <button
-          onClick={handleStart}
-          disabled={busy}
-          className="px-3 py-1 bg-green-300 hover:bg-green-400 text-black rounded text-sm font-medium disabled:opacity-60"
-        >
-          Start Cam
-        </button>
-      ) : (
-        <button
-          onClick={handleStop}
-          disabled={busy}
-          className="px-3 py-1 bg-red-300 hover:bg-red-400 text-black rounded text-sm font-medium disabled:opacity-60"
-        >
-          Stop ({prettyElapsed})
-        </button>
-      )}
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <label className="text-xs text-gray-300 col-span-2">
+          <div className="mb-1">Camera</div>
+          <select
+            value={deviceId}
+            onChange={(e) => setDeviceId(e.target.value)}
+            className="px-2 py-1 bg-gray-200 text-black rounded text-sm w-full"
+            title="Camera"
+          >
+            {devices.map((d) => (
+              <option key={d.id} value={d.id}>{d.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs text-gray-300">
+          <div className="mb-1">Resolution</div>
+          <select
+            value={`${res.w}x${res.h}`}
+            onChange={(e) => {
+              const [w, h] = e.target.value.split("x").map(Number);
+              setRes({ w, h });
+            }}
+            className="px-2 py-1 bg-gray-200 text-black rounded text-sm w-full"
+            title="Resolution"
+          >
+            <option value="1280x720">720p</option>
+            <option value="1920x1080">1080p</option>
+          </select>
+        </label>
+        <label className="text-xs text-gray-300">
+          <div className="mb-1">FPS</div>
+          <select
+            value={fps}
+            onChange={(e) => setFps(Number(e.target.value))}
+            className="px-2 py-1 bg-gray-200 text-black rounded text-sm w-full"
+            title="FPS"
+          >
+            <option value={30}>30 fps</option>
+            <option value={60}>60 fps</option>
+          </select>
+        </label>
+        <label className="text-xs text-gray-300 flex items-center gap-1">
+          <input type="checkbox" checked={includeMic} onChange={(e) => setIncludeMic(e.target.checked)} />
+          Include mic
+        </label>
+        <div>
+          <div className="text-xs text-gray-300 mb-1">Preview</div>
+          <button onClick={refreshPreview} className="px-2 py-1 bg-gray-200 hover:bg-gray-300 text-black rounded text-sm w-full">Start Preview</button>
+        </div>
+        <div className="col-span-2 flex justify-end">
+          {!state.isRecording ? (
+            <button
+              onClick={handleStart}
+              disabled={busy}
+              className="px-3 py-1 bg-green-300 hover:bg-green-400 text-black rounded text-sm font-medium disabled:opacity-60"
+            >
+              Start Cam
+            </button>
+          ) : (
+            <button
+              onClick={handleStop}
+              disabled={busy}
+              className="px-3 py-1 bg-red-300 hover:bg-red-400 text-black rounded text-sm font-medium disabled:opacity-60"
+            >
+              Stop ({prettyElapsed})
+            </button>
+          )}
+        </div>
+      </div>
       <video ref={videoRef} muted playsInline className="hidden" />
     </div>
   );
 };
 
 export default WebcamRecorder;
+

@@ -17,8 +17,12 @@
       "fs": {
         "readFile": true,
         "writeFile": true,
+        "exists": true,
         "createDir": true,
         "scope": ["**"]
+      },
+      "path": {
+        "all": true
       },
       "protocol": {
         "asset": true,
