@@ -1,5 +1,5 @@
-import React, { useMemo } from "react";
-import { useTimeline } from "../../context/TimelineContext";
+import React from "react";
+// PROTOTYPE: useMemo and useTimeline imports removed - component disabled and returns null
 
 /**
  * TransitionMenu: PROTOTYPE CODE - FEATURE NEVER COMPLETED
