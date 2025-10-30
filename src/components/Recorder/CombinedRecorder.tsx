@@ -16,7 +16,7 @@ const CombinedRecorder: React.FC = () => {
   const [busy, setBusy] = useState(false);
 
   const handleStart = async () => {
-    if (busy || screen.state.isRecording) return;
+    if (busy || (screen.state.isRecording || webcam.state.isRecording || !!mic.state.isRecording)) return;
     // Validate mic + webcam previews are active; if not, fail without starting
     if (!mic.state.stream) {
       showToast("Microphone not ready. Open the Microphone panel and start preview.", "error", 4000);
@@ -41,23 +41,29 @@ const CombinedRecorder: React.FC = () => {
   };
 
   const handleStop = async () => {
-    if (busy || !screen.state.isRecording) return;
+    const anyRecording = screen.state.isRecording || webcam.state.isRecording || !!mic.state.isRecording;
+    if (busy || !anyRecording) return;
     setBusy(true);
     try {
-      const screenOut = await screen.stop();
-      const camOut = await webcam.stop();
-      const micOut = mic.state.isRecording ? await mic.stopRecording() : null;
+      // Stop all in parallel to prevent drift; always attempt each
+      const screenStop = screen.state.isRecording ? screen.stop() : Promise.resolve(null);
+      const micStop = mic.state.isRecording ? mic.stopRecording() : Promise.resolve(null);
+      const camStop = webcam.state.isRecording ? webcam.stop() : Promise.resolve(null);
+
+      const [screenOut, camOut, micOut] = await Promise.all([screenStop, camStop, micStop]);
+
       if (!screenOut || !camOut) {
         showToast("Recording outputs missing.", "error", 4000);
         return;
       }
+      // Tauri expects snake_case keys
       const out = await invoke<string>("compose_pip_cmd", {
-        baseVideoPath: screenOut,
-        overlayVideoPath: camOut,
-        audioPath: micOut?.path || null,
+        base_video_path: screenOut,
+        overlay_video_path: camOut,
+        audio_path: micOut && (micOut as any).path ? (micOut as any).path : null,
         corner,
-        pipWidthPx: pip,
-        marginPx: margin,
+        pip_width_px: pip,
+        margin_px: margin,
       });
       try {
         const media = await importVideo(out);
@@ -100,7 +106,7 @@ const CombinedRecorder: React.FC = () => {
         </label>
       </div>
       <div className="flex justify-end">
-        {!screen.state.isRecording ? (
+        {!(screen.state.isRecording || webcam.state.isRecording || !!mic.state.isRecording) ? (
           <button onClick={handleStart} disabled={busy} className="px-3 py-1 bg-purple-300 hover:bg-purple-400 text-black rounded text-sm font-medium disabled:opacity-60">Start Combined</button>
         ) : (
           <button onClick={handleStop} disabled={busy} className="px-3 py-1 bg-red-300 hover:bg-red-400 text-black rounded text-sm font-medium disabled:opacity-60">Stop ({screen.prettyElapsed})</button>
