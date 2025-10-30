@@ -2,9 +2,22 @@ import React from "react";
 import { useTimeline } from "../../context/TimelineContext";
 
 /**
- * OverlayMenu: minimal UI to add a text overlay item on O1 at current playhead.
+ * OverlayMenu: PROTOTYPE CODE - FEATURE NEVER COMPLETED
+ * 
+ * This component was intended to add text overlay items to the timeline. While the
+ * UI button and data model were implemented, the actual text rendering during export
+ * was never fully integrated. The button has been removed from the UI but the code
+ * is preserved here for reference.
+ * 
+ * Overlay items can be added to timeline (data model exists), but text overlays are
+ * not rendered in the final exported video through the export pipeline.
  */
 const OverlayMenu: React.FC = () => {
+  // PROTOTYPE: Component disabled - button removed from UI
+  // Overlay data model exists but overlays are not rendered in exported video
+  return null;
+  
+  /* PROTOTYPE CODE BELOW - NOT FUNCTIONAL
   const timeline = useTimeline();
   const addOverlay = () => {
     const id = `ov_${Date.now()}`;
@@ -39,6 +52,7 @@ const OverlayMenu: React.FC = () => {
       </button>
     </div>
   );
+  */
 };
 
 export default OverlayMenu;

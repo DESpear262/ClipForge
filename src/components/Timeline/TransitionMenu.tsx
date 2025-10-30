@@ -2,9 +2,22 @@ import React, { useMemo } from "react";
 import { useTimeline } from "../../context/TimelineContext";
 
 /**
- * TransitionMenu: minimal UI to add transitions between adjacent items on V1.
+ * TransitionMenu: PROTOTYPE CODE - FEATURE NEVER COMPLETED
+ * 
+ * This component was intended to add transitions (crossfade/fade-to-black) between
+ * adjacent timeline items. While the UI buttons were implemented, the actual transition
+ * rendering and export integration was never completed. The buttons have been removed
+ * from the UI but the code is preserved here for reference.
+ * 
+ * The transition data model exists in TimelineContext (addTransition, transitions state),
+ * but transitions are not rendered during preview or exported in the final video.
  */
 const TransitionMenu: React.FC = () => {
+  // PROTOTYPE: Component disabled - buttons removed from UI
+  // The transition data model exists but transitions are not rendered or exported
+  return null;
+  
+  /* PROTOTYPE CODE BELOW - NOT FUNCTIONAL
   const timeline = useTimeline();
 
   const v1Items = useMemo(() => timeline.state.items.filter(it => it.trackId === (timeline.state.tracks[0]?.id || "V1"))
@@ -40,6 +53,7 @@ const TransitionMenu: React.FC = () => {
       </button>
     </div>
   );
+  */
 };
 
 export default TransitionMenu;

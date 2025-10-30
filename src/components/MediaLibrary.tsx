@@ -4,8 +4,10 @@ import { getMediaLibrary, deleteMediaItem, type MediaDto, ensurePreview, loadPro
 import { convertFileSrc } from "@tauri-apps/api/tauri";
 import VideoPlayer from "./VideoPlayer";
 import TimelinePreview from "./TimelinePreview";
-import TransitionMenu from "./Timeline/TransitionMenu";
-import OverlayMenu from "./Timeline/OverlayMenu";
+// PROTOTYPE: TransitionMenu and OverlayMenu imports removed - features never completed
+// These components were intended for transitions and text overlays but were never fully functional
+// import TransitionMenu from "./Timeline/TransitionMenu";
+// import OverlayMenu from "./Timeline/OverlayMenu";
 import StreamMixer from "./StreamMixer";
 import Timeline from "./Timeline";
 import { TimelineProvider, useTimeline } from "../context/TimelineContext";
@@ -473,8 +475,8 @@ const MediaLibrary: React.FC = () => {
                       </>
                     );
                   })()}
-                  <TransitionMenu />
-                  <OverlayMenu />
+                  {/* PROTOTYPE: TransitionMenu and OverlayMenu buttons removed - features never completed
+                      These components exist but transitions/overlays are not rendered in exported video */}
                 </div>
               )}
             </div>
