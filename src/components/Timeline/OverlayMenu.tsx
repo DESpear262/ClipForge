@@ -1,5 +1,5 @@
 import React from "react";
-import { useTimeline } from "../../context/TimelineContext";
+// PROTOTYPE: useTimeline import removed - component disabled and returns null
 
 /**
  * OverlayMenu: PROTOTYPE CODE - FEATURE NEVER COMPLETED
